@@ -13,6 +13,8 @@ rand = "0.7"
 [dev-dependencies]
 quickcheck = "0.9"
 criterion = "0.3"
+crossbeam = "0.7"
+num_cpus = "1"
 
 [profile.release]
 opt-level = 3
@@ -22,4 +24,9 @@ lto = true
 [[bench]]
 path = "src/benches/benchmark.rs"
 name = "benchmark"
+harness = false
+
+[[bench]]
+path = "src/benches/flops_benchmark.rs"
+name = "flops_benchmark"
 harness = false
