@@ -19,6 +19,14 @@ pub fn lstm_benchmark(c: &mut Criterion) {
         })
     });
 
+    let lstm32 = LSTMNetworkF32::new(&[8, 100, 100, 8]);
+    c.bench_function("lstm f32 8-100-100-8 propagate (native f32)", |b| {
+        b.iter(|| {
+            let mut st = black_box(&lstm32).start();
+            st.propagate32(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+
     let lstm = LSTMNetwork::new(&[5, 8, 4, 1]);
     c.bench_function("lstm f64 5-8-4-1 propagate", |b| {
         b.iter(|| {
@@ -32,6 +40,14 @@ pub fn lstm_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let mut st = black_box(&lstm32).start();
             st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+
+    let lstm32 = LSTMNetworkF32::new(&[5, 8, 4, 1]);
+    c.bench_function("lstm f32 5-8-4-1 propagate (native f32)", |b| {
+        b.iter(|| {
+            let mut st = black_box(&lstm32).start();
+            st.propagate32(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
         })
     });
 }

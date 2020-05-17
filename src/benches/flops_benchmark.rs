@@ -21,10 +21,10 @@ fn bench(millis: u64) -> (std::time::Duration, usize) {
                 let mut st = net.start();
                 while !start.load(Ordering::Relaxed) {}
                 while !stop.load(Ordering::Relaxed) {
-                    st.propagate(&ones);
+                    st.propagate32(&ones);
                     counter.fetch_add(1, Ordering::Relaxed);
                 }
-                let out = st.propagate(&ones);
+                let out = st.propagate32(&ones);
                 counter.fetch_add(1, Ordering::Relaxed);
                 total_sz.fetch_add(out[0] as u64, Ordering::Relaxed);
             }));
