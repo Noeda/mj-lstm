@@ -496,12 +496,9 @@ impl RNNState for LSTMStateBase<f32, F32x8> {
     }
 }
 
+#[inline]
 fn div2_round_up(x: usize) -> usize {
-    if x % 2 == 1 {
-        x / 2 + 1
-    } else {
-        x / 2
-    }
+    x / 2 + x % 2
 }
 
 impl LSTMStateBase<f32, F32x8> {
@@ -528,62 +525,91 @@ impl LSTMStateBase<f32, F32x8> {
 
         let mut num_inputs = inputs.len();
         for i in 0..self.network.weights.len() {
-            for tgt_idx in 0..div2_round_up(self.network.initial_memories.get_unchecked(i).len()) {
-                let mut iiof = F32x8::new(
-                    *self
-                        .network
-                        .input_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx * 2),
-                    *self
-                        .network
-                        .input_gate_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx * 2),
-                    *self
-                        .network
-                        .output_gate_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx * 2),
-                    *self
-                        .network
-                        .forget_gate_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx * 2),
-                    *self
-                        .network
-                        .input_biases
-                        .get_unchecked(i)
-                        .get(tgt_idx * 2 + 1)
-                        .unwrap_or(&zero),
-                    *self
-                        .network
-                        .input_gate_biases
-                        .get_unchecked(i)
-                        .get(tgt_idx * 2 + 1)
-                        .unwrap_or(&zero),
-                    *self
-                        .network
-                        .output_gate_biases
-                        .get_unchecked(i)
-                        .get(tgt_idx * 2 + 1)
-                        .unwrap_or(&zero),
-                    *self
-                        .network
-                        .forget_gate_biases
-                        .get_unchecked(i)
-                        .get(tgt_idx * 2 + 1)
-                        .unwrap_or(&zero),
-                );
+            let layer_len = self.network.initial_memories.get_unchecked(i).len();
+            for tgt_idx in 0..div2_round_up(layer_len) {
+                let tgt_idx_m_2 = tgt_idx * 2;
+                let tgt_idx_m_2_plus_1 = tgt_idx_m_2 + 1;
+                let is_last = tgt_idx_m_2_plus_1 >= layer_len;
+                let mut iiof = if is_last {
+                    F32x8::new(
+                        *self
+                            .network
+                            .input_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .input_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .output_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .forget_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                    )
+                } else {
+                    F32x8::new(
+                        *self
+                            .network
+                            .input_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .input_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .output_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .forget_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2),
+                        *self
+                            .network
+                            .input_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2_plus_1),
+                        *self
+                            .network
+                            .input_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2_plus_1),
+                        *self
+                            .network
+                            .output_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2_plus_1),
+                        *self
+                            .network
+                            .forget_gate_biases
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx_m_2_plus_1),
+                    )
+                };
 
                 let last_act1 = self
                     .last_activations
                     .get_unchecked(i)
-                    .get_unchecked(tgt_idx * 2);
+                    .get_unchecked(tgt_idx_m_2);
                 let last_act2 = self
                     .last_activations
                     .get_unchecked(i)
-                    .get(tgt_idx * 2 + 1)
+                    .get(tgt_idx_m_2_plus_1)
                     .unwrap_or(&zero);
                 iiof.mul_add_scalar2(
                     *last_act1,
@@ -595,8 +621,9 @@ impl LSTMStateBase<f32, F32x8> {
                         .get_unchecked(tgt_idx),
                 );
 
+                let tgt_idx_num_inputs = tgt_idx * num_inputs;
                 for src_idx in 0..num_inputs {
-                    let offset = src_idx + tgt_idx * num_inputs;
+                    let offset = src_idx + tgt_idx_num_inputs;
                     iiof.mul_add_scalar(
                         *outputs2.get_unchecked(src_idx),
                         *self.network.weights.get_unchecked(i).get_unchecked(offset),
@@ -609,50 +636,50 @@ impl LSTMStateBase<f32, F32x8> {
                 let input_gate_s1 = iiof_sigmoid.v2();
                 let input_s1 = iiof_sigmoid.v1() * 2.0 - 1.0;
 
-                let new_memory1 = self.memories.get_unchecked(i).get_unchecked(tgt_idx * 2)
+                let new_memory1 = self.memories.get_unchecked(i).get_unchecked(tgt_idx_m_2)
                     * iiof_sigmoid.v4()
                     + input_s1 * input_gate_s1;
 
                 let output_s1 = iiof_sigmoid.v3();
                 let output_v1 = (fast_sigmoid32(new_memory1) * 2.0 - 1.0) * output_s1;
 
-                *outputs1.get_unchecked_mut(tgt_idx * 2) = output_v1;
+                *outputs1.get_unchecked_mut(tgt_idx_m_2) = output_v1;
                 *self
                     .memories
                     .get_unchecked_mut(i)
-                    .get_unchecked_mut(tgt_idx * 2) = new_memory1;
+                    .get_unchecked_mut(tgt_idx_m_2) = new_memory1;
                 *self
                     .last_activations
                     .get_unchecked_mut(i)
-                    .get_unchecked_mut(tgt_idx * 2) = output_v1;
+                    .get_unchecked_mut(tgt_idx_m_2) = output_v1;
 
-                if tgt_idx * 2 + 1 < self.network.initial_memories.get_unchecked(i).len() {
+                if !is_last {
                     let input_gate_s2 = iiof_sigmoid.v6();
                     let input_s2 = iiof_sigmoid.v5() * 2.0 - 1.0;
 
                     let new_memory2 = self
                         .memories
                         .get_unchecked(i)
-                        .get_unchecked(tgt_idx * 2 + 1)
+                        .get_unchecked(tgt_idx_m_2_plus_1)
                         * iiof_sigmoid.v8()
                         + input_s2 * input_gate_s2;
 
                     let output_s2 = iiof_sigmoid.v7();
                     let output_v2 = (fast_sigmoid32(new_memory2) * 2.0 - 1.0) * output_s2;
 
-                    *outputs1.get_unchecked_mut(tgt_idx * 2 + 1) = output_v2;
+                    *outputs1.get_unchecked_mut(tgt_idx_m_2_plus_1) = output_v2;
                     *self
                         .memories
                         .get_unchecked_mut(i)
-                        .get_unchecked_mut(tgt_idx * 2 + 1) = new_memory2;
+                        .get_unchecked_mut(tgt_idx_m_2_plus_1) = new_memory2;
                     *self
                         .last_activations
                         .get_unchecked_mut(i)
-                        .get_unchecked_mut(tgt_idx * 2 + 1) = output_v2;
+                        .get_unchecked_mut(tgt_idx_m_2_plus_1) = output_v2;
                 }
             }
             mem::swap(&mut outputs1, &mut outputs2);
-            num_inputs = self.memories.get_unchecked(i).len();
+            num_inputs = layer_len;
         }
         for tgt_idx in 0..self.network.noutputs {
             let mut v: f32 = if self.network.no_output_bias {
@@ -704,7 +731,8 @@ impl LSTMStateBase<f64, F64x4> {
 
         let mut num_inputs = inputs.len();
         for i in 0..self.network.weights.len() {
-            for tgt_idx in 0..self.network.initial_memories.get_unchecked(i).len() {
+            let layer_size = self.network.initial_memories.get_unchecked(i).len();
+            for tgt_idx in 0..layer_size {
                 let mut iiof = F64x4::new(
                     *self
                         .network
@@ -1482,23 +1510,15 @@ impl LSTMNetworkF32 {
         } else {
             self.initial_memories.get_unchecked(layer - 1).len()
         };
-        if tgt_idx % 2 == 0 {
-            let f: &F32x8 = self
-                .weights
-                .get_unchecked(layer)
-                .get_unchecked(src_idx + (tgt_idx / 2) * num_inputs);
-            std::mem::transmute(f)
-        } else {
-            let f: &F32x8 = self
-                .weights
-                .get_unchecked(layer)
-                .get_unchecked(src_idx + (tgt_idx / 2) * num_inputs);
-            let f2: *const F32x8 = f;
-            let f3: *const F32x4 = f2 as *const F32x4;
-            let f4 = f3.add(1);
-            let f5: &F32x4 = &*(f4 as *const F32x4);
-            f5
-        }
+        let f: &F32x8 = self
+            .weights
+            .get_unchecked(layer)
+            .get_unchecked(src_idx + (tgt_idx / 2) * num_inputs);
+        let f2: *const F32x8 = f;
+        let f3: *const F32x4 = f2 as *const F32x4;
+        let f4 = f3.add(tgt_idx % 2);
+        let f5: &F32x4 = &*(f4 as *const F32x4);
+        f5
     }
 }
 
