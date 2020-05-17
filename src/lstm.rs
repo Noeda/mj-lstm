@@ -18,10 +18,7 @@ pub type LSTMNetworkF32 = LSTMNetworkBase<f32, F32x8>;
 pub struct LSTMNetworkBase<T, Unpack> {
     pub(crate) weights: Vec<Vec<Unpack>>,
     pub(crate) last_state_weights: Vec<Vec<Unpack>>,
-    pub(crate) input_gate_biases: Vec<Vec<T>>,
-    pub(crate) output_gate_biases: Vec<Vec<T>>,
-    pub(crate) forget_gate_biases: Vec<Vec<T>>,
-    pub(crate) input_biases: Vec<Vec<T>>,
+    pub(crate) iiof_biases: Vec<Vec<Unpack>>,
     pub(crate) initial_memories: Vec<Vec<T>>,
 
     pub(crate) output_layer_biases: Vec<T>,
@@ -129,17 +126,17 @@ impl Vectorizable for LSTMNetwork {
         for layer in self.last_state_weights.iter() {
             v.extend(F64x4::v4_vec(layer));
         }
-        for layer in self.input_gate_biases.iter() {
-            v.extend(layer);
+        for layer in self.iiof_biases.iter() {
+            v.extend(F64x4::v1_vec(layer));
         }
-        for layer in self.output_gate_biases.iter() {
-            v.extend(layer);
+        for layer in self.iiof_biases.iter() {
+            v.extend(F64x4::v2_vec(layer));
         }
-        for layer in self.forget_gate_biases.iter() {
-            v.extend(layer);
+        for layer in self.iiof_biases.iter() {
+            v.extend(F64x4::v3_vec(layer));
         }
-        for layer in self.input_biases.iter() {
-            v.extend(layer);
+        for layer in self.iiof_biases.iter() {
+            v.extend(F64x4::v4_vec(layer));
         }
         for layer in self.initial_memories.iter() {
             v.extend(layer);
@@ -167,10 +164,10 @@ impl Vectorizable for LSTMNetwork {
         let mut last_state_weights_input_gate: Vec<Vec<f64>> = Vec::with_capacity(sizes.len() - 2);
         let mut last_state_weights_output_gate: Vec<Vec<f64>> = Vec::with_capacity(sizes.len() - 2);
         let mut last_state_weights_forget_gate: Vec<Vec<f64>> = Vec::with_capacity(sizes.len() - 2);
+        let mut input_biases = Vec::with_capacity(sizes.len() - 2);
         let mut input_gate_biases = Vec::with_capacity(sizes.len() - 2);
         let mut output_gate_biases = Vec::with_capacity(sizes.len() - 2);
         let mut forget_gate_biases = Vec::with_capacity(sizes.len() - 2);
-        let mut input_biases = Vec::with_capacity(sizes.len() - 2);
         let mut initial_memories = Vec::with_capacity(sizes.len() - 2);
         let mut output_layer_biases = Vec::with_capacity(sizes[sizes.len() - 1]);
         let mut output_layer_weights =
@@ -221,6 +218,11 @@ impl Vectorizable for LSTMNetwork {
         for i in 1..sizes.len() - 1 {
             let mut iw = vec![];
             c.extend(&mut iw, sizes[i]);
+            input_biases.push(iw);
+        }
+        for i in 1..sizes.len() - 1 {
+            let mut iw = vec![];
+            c.extend(&mut iw, sizes[i]);
             input_gate_biases.push(iw);
         }
         for i in 1..sizes.len() - 1 {
@@ -232,11 +234,6 @@ impl Vectorizable for LSTMNetwork {
             let mut iw = vec![];
             c.extend(&mut iw, sizes[i]);
             forget_gate_biases.push(iw);
-        }
-        for i in 1..sizes.len() - 1 {
-            let mut iw = vec![];
-            c.extend(&mut iw, sizes[i]);
-            input_biases.push(iw);
         }
         for i in 1..sizes.len() - 1 {
             let mut iw = vec![];
@@ -263,10 +260,12 @@ impl Vectorizable for LSTMNetwork {
                 &output_gates,
                 &forget_gates,
             ),
-            input_gate_biases,
-            output_gate_biases,
-            forget_gate_biases,
-            input_biases,
+            iiof_biases: F64x4::vecs_from_vecs64(
+                &input_biases,
+                &input_gate_biases,
+                &output_gate_biases,
+                &forget_gate_biases,
+            ),
             last_state_weights: F64x4::vecs_from_vecs64(
                 &last_state_weights_input,
                 &last_state_weights_input_gate,
@@ -304,6 +303,18 @@ pub(crate) fn make_random_vec<T: FromF64>(len: usize) -> Vec<T> {
         v.push(T::from_f64(thread_rng().gen_range(-0.001, 0.001)));
     }
     v
+}
+
+fn make_random_vec4_pack_them_forgets_1<Unpack: Unpackable>(len: usize) -> Vec<Unpack> {
+    let mut v = Vec::with_capacity(len);
+    for i in 0..len {
+        if i % 4 == 3 {
+            v.push(thread_rng().gen_range(-0.999, 1.001));
+        } else {
+            v.push(thread_rng().gen_range(-0.001, 0.001));
+        }
+    }
+    Unpack::from_f64_vec(&v)
 }
 
 fn make_random_vec4_pack_them<Unpack: Unpackable>(len: usize) -> Vec<Unpack> {
@@ -386,10 +397,7 @@ impl<T: 'static + Clone + FromF64, Unpack: Unpackable + std::fmt::Debug + Alloca
         }
 
         let mut memories = Vec::with_capacity(layer_sizes.len() - 2);
-        let mut input_biases = Vec::with_capacity(layer_sizes.len() - 2);
-        let mut output_gate_biases: Vec<Vec<T>> = Vec::with_capacity(layer_sizes.len() - 2);
-        let mut forget_gate_biases = Vec::with_capacity(layer_sizes.len() - 2);
-        let mut input_gate_biases = Vec::with_capacity(layer_sizes.len() - 2);
+        let mut iiof_biases = Vec::with_capacity(layer_sizes.len() - 2);
 
         let mut output_layer_biases: Vec<T> =
             Vec::with_capacity(layer_sizes[layer_sizes.len() - 1]);
@@ -400,22 +408,16 @@ impl<T: 'static + Clone + FromF64, Unpack: Unpackable + std::fmt::Debug + Alloca
         let mut last_state_weights = Vec::with_capacity(layer_sizes.len() - 2);
         for i in 1..layer_sizes.len() - 1 {
             memories.push(make_random_vec(layer_sizes[i]));
-            input_gate_biases.push(make_random_vec(layer_sizes[i]));
-            output_gate_biases.push(make_random_vec(layer_sizes[i]));
-            let onevec = vec![T::from_f64(0.9999); layer_sizes[i]];
-            forget_gate_biases.push(onevec);
-            input_biases.push(make_random_vec(layer_sizes[i]));
+            let iiof_vec = make_random_vec4_pack_them_forgets_1(layer_sizes[i] * 4);
+            iiof_biases.push(iiof_vec);
             last_state_weights.push(make_random_vec4_pack_them(layer_sizes[i] * 4));
         }
 
         LSTMNetworkBase {
             weights,
-            input_gate_biases,
-            forget_gate_biases,
-            output_gate_biases,
+            iiof_biases,
             output_layer_biases,
             last_state_weights,
-            input_biases,
             output_layer_weights,
             initial_memories: memories,
             widest_layer_size,
@@ -530,78 +532,11 @@ impl LSTMStateBase<f32, F32x8> {
                 let tgt_idx_m_2 = tgt_idx * 2;
                 let tgt_idx_m_2_plus_1 = tgt_idx_m_2 + 1;
                 let is_last = tgt_idx_m_2_plus_1 >= layer_len;
-                let mut iiof = if is_last {
-                    F32x8::new(
-                        *self
-                            .network
-                            .input_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .input_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .output_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .forget_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        0.0,
-                        0.0,
-                        0.0,
-                        0.0,
-                    )
-                } else {
-                    F32x8::new(
-                        *self
-                            .network
-                            .input_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .input_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .output_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .forget_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2),
-                        *self
-                            .network
-                            .input_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2_plus_1),
-                        *self
-                            .network
-                            .input_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2_plus_1),
-                        *self
-                            .network
-                            .output_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2_plus_1),
-                        *self
-                            .network
-                            .forget_gate_biases
-                            .get_unchecked(i)
-                            .get_unchecked(tgt_idx_m_2_plus_1),
-                    )
-                };
-
+                let mut iiof = *self
+                    .network
+                    .iiof_biases
+                    .get_unchecked(i)
+                    .get_unchecked(tgt_idx);
                 let last_act1 = self
                     .last_activations
                     .get_unchecked(i)
@@ -733,29 +668,11 @@ impl LSTMStateBase<f64, F64x4> {
         for i in 0..self.network.weights.len() {
             let layer_size = self.network.initial_memories.get_unchecked(i).len();
             for tgt_idx in 0..layer_size {
-                let mut iiof = F64x4::new(
-                    *self
-                        .network
-                        .input_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx),
-                    *self
-                        .network
-                        .input_gate_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx),
-                    *self
-                        .network
-                        .output_gate_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx),
-                    *self
-                        .network
-                        .forget_gate_biases
-                        .get_unchecked(i)
-                        .get_unchecked(tgt_idx),
-                );
-
+                let mut iiof = *self
+                    .network
+                    .iiof_biases
+                    .get_unchecked(i)
+                    .get_unchecked(tgt_idx);
                 let last_act = self
                     .last_activations
                     .get_unchecked(i)
@@ -1089,29 +1006,19 @@ impl From<&LSTMNetworkF32> for LSTMNetwork {
         }
         assert_eq!(last_state_weights.len(), other.last_state_weights.len());
 
+        let mut iiof_biases: Vec<Vec<F64x4>> = Vec::with_capacity(nlayers - 2);
+        for i in 0..nlayers - 2 {
+            let mut iiof = vecf32_to_vecf64(&other.iiof_biases[i]);
+            if layer_size(i + 1) % 2 == 1 {
+                iiof.truncate(iiof.len() - 1);
+            }
+            iiof_biases.push(iiof);
+        }
+
         LSTMNetwork {
             weights,
             last_state_weights,
-            input_gate_biases: other
-                .input_gate_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f64).collect())
-                .collect(),
-            output_gate_biases: other
-                .output_gate_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f64).collect())
-                .collect(),
-            forget_gate_biases: other
-                .forget_gate_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f64).collect())
-                .collect(),
-            input_biases: other
-                .input_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f64).collect())
-                .collect(),
+            iiof_biases,
             initial_memories: other
                 .initial_memories
                 .iter()
@@ -1176,6 +1083,12 @@ impl From<&LSTMNetwork> for LSTMNetworkF32 {
             }
             weights.push(w_vec);
         }
+
+        let mut iiof_biases = Vec::with_capacity(nlayers - 2);
+        for i in 0..nlayers - 2 {
+            iiof_biases.push(vecf64_to_vecf32(&other.iiof_biases[i]));
+        }
+
         LSTMNetworkF32 {
             weights,
             last_state_weights: other
@@ -1183,26 +1096,7 @@ impl From<&LSTMNetwork> for LSTMNetworkF32 {
                 .iter()
                 .map(|inner| vecf64_to_vecf32(&inner))
                 .collect(),
-            input_gate_biases: other
-                .input_gate_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f32).collect())
-                .collect(),
-            output_gate_biases: other
-                .output_gate_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f32).collect())
-                .collect(),
-            forget_gate_biases: other
-                .forget_gate_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f32).collect())
-                .collect(),
-            input_biases: other
-                .input_biases
-                .iter()
-                .map(|inner| inner.iter().map(|x| *x as f32).collect())
-                .collect(),
+            iiof_biases,
             initial_memories: other
                 .initial_memories
                 .iter()
