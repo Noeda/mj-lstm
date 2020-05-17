@@ -294,6 +294,7 @@ pub struct LSTMStateBase<T, Unpack> {
     last_activations: Vec<Vec<T>>,
     storage1: Vec<T>,
     storage2: Vec<T>,
+    storagef32: Vec<f32>,
     storagef64: Vec<f64>,
 }
 
@@ -481,6 +482,7 @@ impl<T: 'static + Clone + FromF64, Unpack: Clone> RNN for LSTMNetworkBase<T, Unp
             last_activations: la,
             storage1: vec![T::from_f64(0.0); self.widest_layer_size],
             storage2: vec![T::from_f64(0.0); self.widest_layer_size],
+            storagef32: vec![0.0; self.noutputs],
             storagef64: vec![0.0; self.noutputs],
         }
     }
@@ -490,11 +492,69 @@ impl RNNState for LSTMStateBase<f64, F64x4> {
     fn propagate<'b>(&mut self, inputs: &'b [f64]) -> &[f64] {
         self.lstm_propagate(inputs)
     }
+
+    fn propagate32<'b>(&mut self, inputs: &'b [f32]) -> &[f32] {
+        let mut inputs64: Vec<f64> = Vec::with_capacity(inputs.len());
+        for i in inputs.iter() {
+            inputs64.push(*i as f64);
+        }
+        let storagef32: *mut f32 = self.storagef32.as_mut_ptr();
+        let noutputs = self.network.noutputs;
+        let out = self.lstm_propagate(&inputs64);
+        for idx in 0..noutputs {
+            unsafe {
+                *storagef32.add(idx) = *out.get_unchecked(idx) as f32;
+            }
+        }
+        &self.storagef32[..]
+    }
+
+    fn reset(&mut self) {
+        for (idx, m) in self.network.initial_memories.iter().enumerate() {
+            unsafe {
+                self.memories.get_unchecked_mut(idx)[..].clone_from_slice(m);
+            }
+        }
+        for layer in self.last_activations.iter_mut() {
+            for m in layer.iter_mut() {
+                *m = 0.0;
+            }
+        }
+    }
 }
 
 impl RNNState for LSTMStateBase<f32, F32x8> {
     fn propagate<'b>(&mut self, inputs: &'b [f64]) -> &[f64] {
+        let mut inputs32: Vec<f32> = Vec::with_capacity(inputs.len());
+        for i in inputs.iter() {
+            inputs32.push(*i as f32);
+        }
+        let storagef64: *mut f64 = self.storagef64.as_mut_ptr();
+        let noutputs = self.network.noutputs;
+        let out = self.lstm_propagate(&inputs32);
+        for idx in 0..noutputs {
+            unsafe {
+                *storagef64.add(idx) = *out.get_unchecked(idx) as f64;
+            }
+        }
+        &self.storagef64[..]
+    }
+
+    fn propagate32<'b>(&mut self, inputs: &'b [f32]) -> &[f32] {
         self.lstm_propagate(inputs)
+    }
+
+    fn reset(&mut self) {
+        for (idx, m) in self.network.initial_memories.iter().enumerate() {
+            unsafe {
+                self.memories.get_unchecked_mut(idx)[..].clone_from_slice(m);
+            }
+        }
+        for layer in self.last_activations.iter_mut() {
+            for m in layer.iter_mut() {
+                *m = 0.0;
+            }
+        }
     }
 }
 
@@ -505,25 +565,22 @@ fn div2_round_up(x: usize) -> usize {
 
 impl LSTMStateBase<f32, F32x8> {
     #[inline]
-    pub fn lstm_propagate<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
+    pub fn lstm_propagate<'b>(&'b mut self, inputs: &[f32]) -> &'b [f32] {
         unsafe { self.lstm_propagate2(inputs) }
     }
 
     #[target_feature(enable = "avx")]
     #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
-    unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
+    unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f32]) -> &'b [f32] {
         assert_eq!(inputs.len(), self.network.ninputs);
 
         let zero: f32 = 0.0;
 
         let mut outputs1: &mut [f32] = &mut self.storage1;
         let mut outputs2: &mut [f32] = &mut self.storage2;
-        let storagef64: &mut [f64] = &mut self.storagef64;
 
-        for i in 0..inputs.len() {
-            *outputs2.get_unchecked_mut(i) = *inputs.get_unchecked(i) as f32;
-        }
+        outputs2[..inputs.len()].clone_from_slice(&inputs[..]);
 
         let mut num_inputs = inputs.len();
         for i in 0..self.network.weights.len() {
@@ -635,10 +692,7 @@ impl LSTMStateBase<f32, F32x8> {
                 *outputs1.get_unchecked_mut(tgt_idx) = v;
             }
         }
-        for i in 0..self.network.noutputs {
-            storagef64[i] = outputs1[i] as f64;
-        }
-        &storagef64[0..self.network.noutputs]
+        &outputs1[0..self.network.noutputs]
     }
 }
 
@@ -1526,6 +1580,56 @@ mod tests {
             st.propagate(&input);
             st.propagate(&input);
             true
+        }
+    }
+
+    quickcheck! {
+        fn f32_network_f32_and_f64_propagate_are_same(net: LSTMNetworkF32) -> bool {
+            let inputs_f32 = vec![0.0; net.num_inputs()];
+            let inputs_f64 = vec![0.0; net.num_inputs()];
+            let mut st1 = net.start();
+            let out1 = st1.propagate(&inputs_f64);
+            let mut st2 = net.start();
+            let out2 = st2.propagate32(&inputs_f32);
+
+            let out1_f32: Vec<f32> = out1.into_iter().map(|x| *x as f32).collect();
+            out1_f32 == out2
+        }
+    }
+
+    quickcheck! {
+        fn f64_network_f32_and_f64_propagate_are_same(net: LSTMNetwork) -> bool {
+            let inputs_f32 = vec![0.0; net.num_inputs()];
+            let inputs_f64 = vec![0.0; net.num_inputs()];
+            let mut st1 = net.start();
+            let out1 = st1.propagate(&inputs_f64);
+            let mut st2 = net.start();
+            let out2 = st2.propagate32(&inputs_f32);
+
+            let out1_f32: Vec<f32> = out1.into_iter().map(|x| *x as f32).collect();
+            out1_f32 == out2
+        }
+    }
+
+    quickcheck! {
+        fn f64_lstm_state_reset_is_equivalent_to_fresh_state(net: LSTMNetwork) -> bool {
+            let inputs_f64 = vec![0.0; net.num_inputs()];
+            let mut st1 = net.start();
+            let out1 = st1.propagate(&inputs_f64).to_vec();
+            st1.reset();
+            let out2 = st1.propagate(&inputs_f64).to_vec();
+            out1 == out2
+        }
+    }
+
+    quickcheck! {
+        fn f32_lstm_state_reset_is_equivalent_to_fresh_state(net: LSTMNetworkF32) -> bool {
+            let inputs_f32 = vec![0.0; net.num_inputs()];
+            let mut st1 = net.start();
+            let out1 = st1.propagate32(&inputs_f32).to_vec();
+            st1.reset();
+            let out2 = st1.propagate32(&inputs_f32).to_vec();
+            out1 == out2
         }
     }
 
