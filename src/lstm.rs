@@ -1564,8 +1564,8 @@ mod tests {
         fn mul_add_scalar_works(x1: f64, v1: f64, v2: f64) -> bool {
             unsafe {
                 let mut vec1 = F64x4::new(v1, v1 * 2.0, v1 * 3.0, v1 * 4.0);
-                let mut original = vec1.clone();
-                let mut vec2 = F64x4::new(v2, v2, v2, v2);
+                let original = vec1.clone();
+                let vec2 = F64x4::new(v2, v2, v2, v2);
                 vec1.mul_add_scalar(x1, vec2);
                 (vec1.v1() - (vec2.v1()*x1 + original.v1())) < 0.001 &&
                 (vec1.v2() - (vec2.v2()*x1 + original.v2())) < 0.001 &&
@@ -1579,7 +1579,7 @@ mod tests {
         fn mul_add_scalar2_f32_works(x1: f32, x2: f32, v1: f32, v2: f32) -> bool {
             unsafe {
                 let mut vec1 = F32x8::new(v1, v1 * 2.0, v1 * 3.0, v1 * 4.0, v1 * 5.0, v1 * 6.0, v1 * 7.0, v1*8.0);
-                let mut original = vec1.clone();
+                let original = vec1.clone();
                 let vec2 = F32x8::new(v2, v2 + 1.0, v2+2.0, v2+3.0, v2+4.0, v2+5.0, v2+6.0, v2+7.0);
                 vec1.mul_add_scalar2(x1, x2, vec2);
                 (vec1.v1() - (vec2.v1()*x1 + original.v1())) < 0.001 &&
@@ -1603,6 +1603,19 @@ mod tests {
     }
 
     quickcheck! {
+        fn f64_network_smoke_test(net: LSTMNetwork) -> bool {
+            let mut st = net.start();
+            let input = vec![0.0; net.num_inputs()];
+            st.propagate(&input);
+            st.propagate(&input);
+            st.propagate(&input);
+            st.propagate(&input);
+            st.propagate(&input);
+            true
+        }
+    }
+
+    quickcheck! {
         fn f32_and_f64_network_are_consistent(net: LSTMNetworkF32) -> bool {
             let net32: LSTMNetwork = LSTMNetwork::from(&net);
             let mut st1 = net.start();
@@ -1622,6 +1635,16 @@ mod tests {
                     okay = false;
                 }
             }
+
+            let output1_f32: Vec<f64> = st1.propagate(&input1_f64).to_vec();
+            let output1_f64: Vec<f64> = st2.propagate(&input1_f64).to_vec();
+
+            for i in 0..output1_f32.len() {
+                if (output1_f32[i] - output1_f64[i]).abs() > 0.1 {
+                    okay = false;
+                }
+            }
+
             okay
         }
     }
