@@ -55,6 +55,10 @@ pub fn main() {
     println!("Propagations: {}", propagations);
     println!(
         "AVX2 instructions: {}",
-        avx2_instructions_per_propagation * propagations / 2
+        avx2_instructions_per_propagation * propagations / 10 / 2
+    );
+    println!(
+        "FLOPS: {}",
+        avx2_instructions_per_propagation * propagations / 10 / 2 * 8
     );
 }
