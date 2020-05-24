@@ -868,12 +868,31 @@ impl PartialEq for F64x4 {
     }
 }
 
+impl Serialize for F32x8 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unsafe { self.vec.serialize(serializer) }
+    }
+}
+
 impl Serialize for F64x4 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         unsafe { self.vec.serialize(serializer) }
+    }
+}
+
+impl<'de> Deserialize<'de> for F32x8 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec8 = Vec8_F32::deserialize(deserializer)?;
+        Ok(F32x8 { vec: vec8 })
     }
 }
 
