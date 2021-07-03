@@ -59,6 +59,7 @@ impl F32x8 {
     #[inline]
     #[target_feature(enable = "avx")]
     #[target_feature(enable = "avx2")]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) unsafe fn new(
         x1: f32,
         x2: f32,

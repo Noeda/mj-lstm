@@ -579,7 +579,7 @@ impl LSTMStateBase<f32, F32x8> {
         let mut outputs1: &mut [f32] = &mut self.storage1;
         let mut outputs2: &mut [f32] = &mut self.storage2;
 
-        outputs2[..inputs.len()].clone_from_slice(&inputs[..]);
+        outputs2[..inputs.len()].clone_from_slice(inputs);
 
         let mut num_inputs = inputs.len();
         for i in 0..self.network.weights.len() {
@@ -705,7 +705,7 @@ impl LSTMStateBase<f64, F64x4> {
     #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
     unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
-        if self.network.initial_memories.len() > 0 {
+        if !self.network.initial_memories.is_empty() {
             assert_eq!(
                 inputs.len() * self.network.initial_memories[0].len(),
                 self.network.weights[0].len()
@@ -715,7 +715,7 @@ impl LSTMStateBase<f64, F64x4> {
         let mut outputs1 = &mut self.storage1;
         let mut outputs2 = &mut self.storage2;
 
-        outputs2[..inputs.len()].clone_from_slice(&inputs[..]);
+        outputs2[..inputs.len()].clone_from_slice(inputs);
 
         let mut num_inputs = inputs.len();
         for i in 0..self.network.weights.len() {
@@ -929,7 +929,7 @@ impl Unpackable for F64x4 {
         }
         let mut result = Vec::with_capacity(result_len);
         for i in 0..result_len {
-            let x1 = v.get(i * 4 + 0).unwrap_or(&0.0);
+            let x1 = v.get(i * 4).unwrap_or(&0.0);
             let x2 = v.get(i * 4 + 1).unwrap_or(&0.0);
             let x3 = v.get(i * 4 + 2).unwrap_or(&0.0);
             let x4 = v.get(i * 4 + 3).unwrap_or(&0.0);
@@ -948,7 +948,7 @@ impl Unpackable for F32x8 {
         }
         let mut result = Vec::with_capacity(result_len);
         for i in 0..result_len {
-            let x1 = v.get(i * 8 + 0).unwrap_or(&0.0);
+            let x1 = v.get(i * 8).unwrap_or(&0.0);
             let x2 = v.get(i * 8 + 1).unwrap_or(&0.0);
             let x3 = v.get(i * 8 + 2).unwrap_or(&0.0);
             let x4 = v.get(i * 8 + 3).unwrap_or(&0.0);
@@ -1145,7 +1145,7 @@ impl From<&LSTMNetwork> for LSTMNetworkF32 {
             last_state_weights: other
                 .last_state_weights
                 .iter()
-                .map(|inner| vecf64_to_vecf32(&inner))
+                .map(|inner| vecf64_to_vecf32(inner))
                 .collect(),
             iiof_biases,
             initial_memories: other
