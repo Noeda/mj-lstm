@@ -310,7 +310,7 @@ fn make_random_vec4_pack_them_forgets_1<Unpack: Unpackable>(len: usize) -> Vec<U
     let mut v = Vec::with_capacity(len);
     for i in 0..len {
         if i % 4 == 3 {
-            v.push(thread_rng().gen_range(-0.999, 1.001));
+            v.push(thread_rng().gen_range(-2.0, 2.0));
         } else {
             v.push(thread_rng().gen_range(-0.001, 0.001));
         }
