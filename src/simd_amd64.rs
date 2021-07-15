@@ -1,5 +1,5 @@
+use crate::simd_common::*;
 use core::arch::x86_64::*;
-use core::simd_common::*;
 use serde::{Deserialize, Serialize};
 use std::mem::MaybeUninit;
 
@@ -25,6 +25,49 @@ pub union F32x4 {
 }
 
 impl F32x4 {
+    pub(crate) unsafe fn new(x1: f32, x2: f32, x3: f32, x4: f32) -> Self {
+        F32x4 {
+            vec: Vec4_F32 {
+                v1: x1,
+                v2: x2,
+                v3: x3,
+                v4: x4,
+            },
+        }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    #[target_feature(enable = "fma")]
+    pub(crate) unsafe fn mul_add_scalar(&mut self, other1: f32, other2: F32x4) {
+        let broadcast_other1: __m128 = _mm_broadcast_ss(&other1);
+        self.val = _mm_fmadd_ps(broadcast_other1, other2.val, self.val);
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    #[target_feature(enable = "fma")]
+    pub(crate) unsafe fn mul_add_scalar2(&mut self, other1: f32, other2: f32, other3: F32x4) {
+        let b_vec = F32x4::new(other1, other1, other2, other2);
+        self.val = _mm_fmadd_ps(b_vec.val, other3.val, self.val);
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    #[target_feature(enable = "fma")]
+    pub(crate) unsafe fn fast_sigmoid(&mut self) {
+        let half = _mm_broadcast_ss(&0.5);
+        let one = _mm_broadcast_ss(&1.0);
+        let negzero = _mm_broadcast_ss(&-0.0);
+        let self_abs = _mm_andnot_ps(negzero, self.val);
+        let plus_one = _mm_add_ps(one, self_abs);
+        let xdivided = _mm_div_ps(self.val, plus_one);
+        self.val = _mm_fmadd_ps(xdivided, half, half)
+    }
+
     #[inline]
     pub(crate) fn v1(&self) -> f32 {
         unsafe { self.vec.v1 }
@@ -189,6 +232,24 @@ impl F64x4 {
     pub(crate) unsafe fn mul_add_scalar(&mut self, other1: f64, other2: F64x4) {
         let broadcast_other1: __m256d = _mm256_broadcast_sd(&other1);
         self.val = _mm256_fmadd_pd(broadcast_other1, other2.val, self.val);
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    #[target_feature(enable = "fma")]
+    pub(crate) unsafe fn mul_add_scalar2(&mut self, other1: f64, other2: f64, other3: F64x4) {
+        let mut v: MaybeUninit<__m256d> = MaybeUninit::<__m256d>::uninit();
+        let b: *mut __m256d = v.as_mut_ptr();
+        let b1: *mut f64 = b as *mut f64;
+        let b2: *mut f64 = b1.add(1);
+        let b3: *mut f64 = b1.add(2);
+        let b4: *mut f64 = b1.add(3);
+        *b1 = other1;
+        *b2 = other1;
+        *b3 = other2;
+        *b4 = other2;
+        self.val = _mm256_fmadd_pd(*b, other3.val, self.val);
     }
 
     fn vec_from_vec64(x1: &[f64], x2: &[f64], x3: &[f64], x4: &[f64]) -> Vec<F64x4> {
