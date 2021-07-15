@@ -1,36 +1,27 @@
 use core::arch::x86_64::*;
+use core::simd_common::*;
 use serde::{Deserialize, Serialize};
 use std::mem::MaybeUninit;
 
 #[repr(C)]
-#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
-pub struct Vec4_F32 {
-    pub(crate) v1: f32,
-    pub(crate) v2: f32,
-    pub(crate) v3: f32,
-    pub(crate) v4: f32,
+#[derive(Copy, Clone)]
+pub union F64x4 {
+    pub(crate) val: __m256d,
+    pub(crate) vec: Vec4_F64,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
-pub struct Vec4_F64 {
-    pub(crate) v1: f64,
-    pub(crate) v2: f64,
-    pub(crate) v3: f64,
-    pub(crate) v4: f64,
+#[derive(Copy, Clone)]
+pub union F32x8 {
+    pub(crate) val: __m256,
+    pub(crate) vec: Vec8_F32,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
-pub struct Vec8_F32 {
-    pub(crate) v1: f32,
-    pub(crate) v2: f32,
-    pub(crate) v3: f32,
-    pub(crate) v4: f32,
-    pub(crate) v5: f32,
-    pub(crate) v6: f32,
-    pub(crate) v7: f32,
-    pub(crate) v8: f32,
+#[derive(Copy, Clone)]
+pub union F32x4 {
+    pub(crate) val: __m128,
+    pub(crate) vec: Vec4_F32,
 }
 
 impl F32x4 {
@@ -284,25 +275,4 @@ impl F64x4 {
     pub(crate) fn v4(&self) -> f64 {
         unsafe { self.vec.v4 }
     }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union F64x4 {
-    pub(crate) val: __m256d,
-    pub(crate) vec: Vec4_F64,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union F32x8 {
-    pub(crate) val: __m256,
-    pub(crate) vec: Vec8_F32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union F32x4 {
-    pub(crate) val: __m128,
-    pub(crate) vec: Vec4_F32,
 }

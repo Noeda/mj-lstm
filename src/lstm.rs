@@ -1,5 +1,9 @@
 use crate::rnn::{RNNState, RNN};
-use crate::simd::*;
+#[cfg(target_arch = "aarch64")]
+use crate::simd_aarch64::*;
+#[cfg(target_arch = "x86_64")]
+use crate::simd_amd64::*;
+use crate::simd_common::*;
 
 /// This is a MxN LSTM-node network.
 ///
@@ -568,9 +572,6 @@ impl LSTMStateBase<f32, F32x8> {
         unsafe { self.lstm_propagate2(inputs) }
     }
 
-    #[target_feature(enable = "avx")]
-    #[target_feature(enable = "avx2")]
-    #[target_feature(enable = "fma")]
     unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f32]) -> &'b [f32] {
         assert_eq!(inputs.len(), self.network.ninputs);
 
@@ -701,9 +702,6 @@ impl LSTMStateBase<f64, F64x4> {
         unsafe { self.lstm_propagate2(inputs) }
     }
 
-    #[target_feature(enable = "avx")]
-    #[target_feature(enable = "avx2")]
-    #[target_feature(enable = "fma")]
     unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
         if !self.network.initial_memories.is_empty() {
             assert_eq!(
@@ -791,31 +789,6 @@ impl LSTMStateBase<f64, F64x4> {
         }
         &outputs1[0..self.network.noutputs]
     }
-}
-
-#[inline]
-pub fn sigmoid(x: f64) -> f64 {
-    1.0 / (1.0 + (-x).exp())
-}
-
-#[inline]
-pub fn fast_sigmoid(x: f64) -> f64 {
-    0.5 + (x / (1.0 + x.abs())) * 0.5
-}
-
-#[inline]
-pub fn fast_sigmoid32(x: f32) -> f32 {
-    0.5 + (x / (1.0 + x.abs())) * 0.5
-}
-
-pub fn inv_sigmoid(x: f64) -> f64 {
-    if x <= 0.0 {
-        return -100_000.0;
-    }
-    if x >= 1.0 {
-        return 100_000.0;
-    }
-    -(1.0 / x - 1.0).ln()
 }
 
 impl PartialOrd for F32x8 {
@@ -1174,8 +1147,6 @@ impl From<&LSTMNetwork> for LSTMNetworkF32 {
 
 impl LSTMNetworkF32 {
     #[inline]
-    #[target_feature(enable = "avx2")]
-    #[target_feature(enable = "fma")]
     unsafe fn weight_items(&self, layer: usize, src_idx: usize, tgt_idx: usize) -> &F32x4 {
         let num_inputs = if layer == 0 {
             self.ninputs
@@ -1219,70 +1190,6 @@ mod tests {
             let (vec, ctx) = network.to_vec();
             let new_network = LSTMNetwork::from_vec(&vec, &ctx);
             new_network == network
-        }
-    }
-
-    quickcheck! {
-        fn m256d_fast_sigmoid_works(x1: f64, x2: f64, x3: f64, x4: f64) -> bool {
-            unsafe {
-                let mut v = F64x4::new(x1, x2, x3, x4);
-                v.fast_sigmoid();
-                fast_sigmoid(x1) == v.v1() &&
-                fast_sigmoid(x2) == v.v2() &&
-                fast_sigmoid(x3) == v.v3() &&
-                fast_sigmoid(x4) == v.v4()
-            }
-        }
-    }
-
-    quickcheck! {
-        fn m256_fast_sigmoid_works(x1: f32, x2: f32, x3: f32, x4: f32, x5: f32, x6: f32, x7:f32, x8:f32) -> bool {
-            unsafe {
-                let mut v = F32x8::new(x1, x2, x3, x4, x5, x6, x7, x8);
-                v.fast_sigmoid();
-                fast_sigmoid32(x1) == v.v1() &&
-                fast_sigmoid32(x2) == v.v2() &&
-                fast_sigmoid32(x3) == v.v3() &&
-                fast_sigmoid32(x4) == v.v4() &&
-                fast_sigmoid32(x5) == v.v5() &&
-                fast_sigmoid32(x6) == v.v6() &&
-                fast_sigmoid32(x7) == v.v7() &&
-                fast_sigmoid32(x8) == v.v8()
-            }
-        }
-    }
-
-    quickcheck! {
-        fn mul_add_scalar_works(x1: f64, v1: f64, v2: f64) -> bool {
-            unsafe {
-                let mut vec1 = F64x4::new(v1, v1 * 2.0, v1 * 3.0, v1 * 4.0);
-                let original = vec1.clone();
-                let vec2 = F64x4::new(v2, v2, v2, v2);
-                vec1.mul_add_scalar(x1, vec2);
-                (vec1.v1() - (vec2.v1()*x1 + original.v1())) < 0.001 &&
-                (vec1.v2() - (vec2.v2()*x1 + original.v2())) < 0.001 &&
-                (vec1.v3() - (vec2.v3()*x1 + original.v3())) < 0.001 &&
-                (vec1.v4() - (vec2.v4()*x1 + original.v4())) < 0.001
-            }
-        }
-    }
-
-    quickcheck! {
-        fn mul_add_scalar2_f32_works(x1: f32, x2: f32, v1: f32, v2: f32) -> bool {
-            unsafe {
-                let mut vec1 = F32x8::new(v1, v1 * 2.0, v1 * 3.0, v1 * 4.0, v1 * 5.0, v1 * 6.0, v1 * 7.0, v1*8.0);
-                let original = vec1.clone();
-                let vec2 = F32x8::new(v2, v2 + 1.0, v2+2.0, v2+3.0, v2+4.0, v2+5.0, v2+6.0, v2+7.0);
-                vec1.mul_add_scalar2(x1, x2, vec2);
-                (vec1.v1() - (vec2.v1()*x1 + original.v1())) < 0.001 &&
-                (vec1.v2() - (vec2.v2()*x1 + original.v2())) < 0.001 &&
-                (vec1.v3() - (vec2.v3()*x1 + original.v3())) < 0.001 &&
-                (vec1.v4() - (vec2.v4()*x1 + original.v4())) < 0.001 &&
-                (vec1.v5() - (vec2.v5()*x2 + original.v5())) < 0.001 &&
-                (vec1.v6() - (vec2.v6()*x2 + original.v6())) < 0.001 &&
-                (vec1.v7() - (vec2.v7()*x2 + original.v7())) < 0.001 &&
-                (vec1.v8() - (vec2.v8()*x2 + original.v8())) < 0.001
-            }
         }
     }
 
