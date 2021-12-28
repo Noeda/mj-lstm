@@ -1,6 +1,5 @@
 use crate::rnn::*;
 use crate::simd_common::*;
-use crate::unpackable::*;
 use rcmaes::Vectorizable;
 use serde::{Deserialize, Serialize};
 

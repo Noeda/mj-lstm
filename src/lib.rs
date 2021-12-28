@@ -1,4 +1,5 @@
 #![allow(clippy::needless_range_loop)]
+#![allow(dead_code)]
 #![feature(stdsimd)]
 
 #[cfg(test)]

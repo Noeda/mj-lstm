@@ -57,10 +57,7 @@ pub fn series_is_trending_down(series: &[f64]) -> f64 {
 
     // normal distribution parameters
     let m = b; // mean
-    let old_var = var;
     let var = (12.0 * var) / (n * n * n - n);
-
-    let x = -m / var.sqrt();
 
     // compute P(slope < 0) (where P(slope) ~ Gaussian(m, var))
     let p = 0.5 * (1.0 + erf((0.0 - m) / (var.sqrt() * (2.0_f64).sqrt())));

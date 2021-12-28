@@ -1,6 +1,5 @@
 use crate::simd_common::*;
 use core::arch::x86_64::*;
-use serde::{Deserialize, Serialize};
 use std::mem::MaybeUninit;
 
 #[repr(C)]
