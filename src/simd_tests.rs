@@ -35,6 +35,21 @@ mod tests {
     }
 
     quickcheck! {
+        fn mul_add_scalar_works_F64x2(x1: f64, x2: f64, x3: f64) -> bool {
+            unsafe {
+                let expected_result1 = x1 + x2 * x3;
+                let expected_result2 = x1 * 2.0 + x2 * x3 * 2.0;
+
+                let mut v = F64x2::new(x1, x1*2.0);
+                let mut v3 = F64x2::new(x3, x3*2.0);
+                v.mul_add_scalar(x2, v3);
+                (v.v1() - expected_result1).abs() < 0.001 &&
+                  (v.v2() - expected_result2).abs() < 0.001
+            }
+        }
+    }
+
+    quickcheck! {
         fn mul_add_scalar_works_F32x4(x1: f32, x2: f32, x3: f32) -> bool {
             unsafe {
                 let expected_result = x1 + x2 * x3;
@@ -75,6 +90,17 @@ mod tests {
                 fast_sigmoid(x2) == v.v2() &&
                 fast_sigmoid(x3) == v.v3() &&
                 fast_sigmoid(x4) == v.v4()
+            }
+        }
+    }
+
+    quickcheck! {
+        fn fast_sigmoid_works_F64x2(x1: f64, x2: f64) -> bool {
+            unsafe {
+                let mut v = F64x2::new(x1, x2);
+                v.fast_sigmoid();
+                fast_sigmoid(x1) == v.v1() &&
+                fast_sigmoid(x2) == v.v2()
             }
         }
     }
@@ -188,6 +214,34 @@ mod tests {
             let vec3 = F64x4::new(v3, v3, v3, v1);
             let result = F64x4::v4_vec(&[vec1, vec2, vec3]);
             result == &[v3, v2, v1]
+            }
+        }
+    }
+
+    quickcheck! {
+        fn v2_vec_works_F64x2(v1: f64, v2: f64, v3: f64) -> bool {
+            unsafe {
+            let vec1 = F64x2::new(v1, v2);
+            let vec2 = F64x2::new(v2, v3);
+            let vec3 = F64x2::new(v3, v1);
+            let result = F64x2::v2_vec(&[vec1, vec2, vec3]);
+            result == &[v2, v3, v1]
+            }
+        }
+    }
+
+    quickcheck! {
+        fn from_F64x2_works(v1: f64, v2: f64, v3: f64, v4: f64) -> bool {
+            unsafe {
+            let vec1 = F64x2::new(v1, v2);
+            let vec2 = F64x2::new(v3, v4);
+            let vec3 = F64x4::new(v1, v2, v3, v4);
+            let vec4 = F64x4::from_F64x2(vec1, vec2);
+
+            vec1.v1() == vec3.v1() && vec1.v2() == vec3.v2() &&
+                vec2.v1() == vec3.v3() && vec2.v2() == vec3.v4() &&
+                vec1.v1() == vec4.v1() && vec1.v2() == vec4.v2() &&
+                vec2.v1() == vec4.v3() && vec2.v2() == vec4.v4()
             }
         }
     }

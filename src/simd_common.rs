@@ -11,6 +11,13 @@ pub struct Vec4_F32 {
 
 #[repr(C)]
 #[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
+pub struct Vec2_F64 {
+    pub(crate) v1: f64,
+    pub(crate) v2: f64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub struct Vec4_F64 {
     pub(crate) v1: f64,
     pub(crate) v2: f64,

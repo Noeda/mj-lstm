@@ -14,6 +14,7 @@ pub mod lstm;
 pub mod rnn;
 #[cfg(target_arch = "aarch64")]
 pub mod simd_aarch64;
+pub mod simd_all;
 #[cfg(target_arch = "x86_64")]
 pub mod simd_amd64;
 pub mod simd_common;
