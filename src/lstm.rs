@@ -1,5 +1,9 @@
 use crate::rnn::{RNNState, RNN};
-use crate::simd_all::*;
+#[cfg(target_arch = "aarch64")]
+use crate::simd_aarch64::*;
+#[cfg(target_arch = "x86_64")]
+use crate::simd_amd64::*;
+use crate::simd_common::*;
 use crate::unpackable::*;
 
 /// This is a MxN LSTM-node network.
@@ -355,10 +359,18 @@ impl AllocateWeights for F32x8 {
             let mut vec: Vec<F32x8> =
                 make_random_vec4_pack_them((layer_sizes_src * (layer_sizes_tgt + 1)) * 4);
             for src_idx in 0..layer_sizes_src {
-                *vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src].v5_mut() = 0.0;
-                *vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src].v6_mut() = 0.0;
-                *vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src].v7_mut() = 0.0;
-                *vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src].v8_mut() = 0.0;
+                vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src]
+                    .vec
+                    .v5 = 0.0;
+                vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src]
+                    .vec
+                    .v6 = 0.0;
+                vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src]
+                    .vec
+                    .v7 = 0.0;
+                vec[src_idx + (layer_sizes_tgt / 2) * layer_sizes_src]
+                    .vec
+                    .v8 = 0.0;
             }
             vec
         }
@@ -780,6 +792,151 @@ impl LSTMStateBase<f64, F64x4> {
     }
 }
 
+impl PartialOrd for F32x8 {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        unsafe { self.vec.partial_cmp(&other.vec) }
+    }
+}
+
+impl PartialOrd for F64x4 {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        unsafe { self.vec.partial_cmp(&other.vec) }
+    }
+}
+
+impl PartialEq for F32x8 {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        unsafe { self.vec.eq(&other.vec) }
+    }
+}
+
+impl PartialEq for F64x4 {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        unsafe { self.vec.eq(&other.vec) }
+    }
+}
+
+impl Serialize for F32x8 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unsafe { self.vec.serialize(serializer) }
+    }
+}
+
+impl Serialize for F64x4 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        unsafe { self.vec.serialize(serializer) }
+    }
+}
+
+impl<'de> Deserialize<'de> for F32x8 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec8 = Vec8_F32::deserialize(deserializer)?;
+        Ok(F32x8 { vec: vec8 })
+    }
+}
+
+impl<'de> Deserialize<'de> for F64x4 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let vec4 = Vec4_F64::deserialize(deserializer)?;
+        Ok(F64x4 { vec: vec4 })
+    }
+}
+
+impl fmt::Debug for F64x4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            write!(
+                f,
+                "F64x4 {{ v1: {}, v2: {}, v3: {}, v4: {} }}",
+                self.vec.v1, self.vec.v2, self.vec.v3, self.vec.v4
+            )
+        }
+    }
+}
+
+impl fmt::Debug for F32x8 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unsafe {
+            write!(
+                f,
+                "F32x8 {{ v1: {}, v2: {}, v3: {}, v4: {}, v5: {}, v6: {}, v7: {}, v8: {} }}",
+                self.vec.v1,
+                self.vec.v2,
+                self.vec.v3,
+                self.vec.v4,
+                self.vec.v5,
+                self.vec.v6,
+                self.vec.v7,
+                self.vec.v8
+            )
+        }
+    }
+}
+
+fn vecf64_to_vecf32(v: &[F64x4]) -> Vec<F32x8> {
+    let mut sz = v.len() / 2;
+    if v.len() % 2 == 1 {
+        sz += 1;
+    }
+    let mut result = Vec::with_capacity(sz);
+    unsafe {
+        let zero: F64x4 = F64x4::new(0.0, 0.0, 0.0, 0.0);
+        for i in 0..sz {
+            let p1 = v.get(i * 2).unwrap_or(&zero);
+            let p2 = v.get(i * 2 + 1).unwrap_or(&zero);
+            result.push(F32x8::new(
+                p1.vec.v1 as f32,
+                p1.vec.v2 as f32,
+                p1.vec.v3 as f32,
+                p1.vec.v4 as f32,
+                p2.vec.v1 as f32,
+                p2.vec.v2 as f32,
+                p2.vec.v3 as f32,
+                p2.vec.v4 as f32,
+            ));
+        }
+    }
+    result
+}
+
+fn vecf32_to_vecf64(v: &[F32x8]) -> Vec<F64x4> {
+    let sz = v.len() * 2;
+    let mut result = Vec::with_capacity(sz);
+    for i in 0..v.len() {
+        unsafe {
+            result.push(F64x4::new(
+                v[i].vec.v1 as f64,
+                v[i].vec.v2 as f64,
+                v[i].vec.v3 as f64,
+                v[i].vec.v4 as f64,
+            ));
+            result.push(F64x4::new(
+                v[i].vec.v5 as f64,
+                v[i].vec.v6 as f64,
+                v[i].vec.v7 as f64,
+                v[i].vec.v8 as f64,
+            ));
+        }
+    }
+    result
+}
+
 impl From<&LSTMNetworkF32> for LSTMNetwork {
     fn from(other: &LSTMNetworkF32) -> Self {
         let nlayers = other.initial_memories.len() + 2;
@@ -801,10 +958,10 @@ impl From<&LSTMNetworkF32> for LSTMNetwork {
                 for src_idx in 0..layer_size(i) {
                     let src_wgt = unsafe { other.weight_items(i, src_idx, tgt_idx) };
                     let tgt_offset = src_idx + tgt_idx * layer_size(i);
-                    *w_vec[tgt_offset].v1_mut() = src_wgt.v1() as f64;
-                    *w_vec[tgt_offset].v2_mut() = src_wgt.v2() as f64;
-                    *w_vec[tgt_offset].v3_mut() = src_wgt.v3() as f64;
-                    *w_vec[tgt_offset].v4_mut() = src_wgt.v4() as f64;
+                    w_vec[tgt_offset].vec.v1 = src_wgt.v1() as f64;
+                    w_vec[tgt_offset].vec.v2 = src_wgt.v2() as f64;
+                    w_vec[tgt_offset].vec.v3 = src_wgt.v3() as f64;
+                    w_vec[tgt_offset].vec.v4 = src_wgt.v4() as f64;
                 }
             }
             weights.push(w_vec);
@@ -884,15 +1041,15 @@ impl From<&LSTMNetwork> for LSTMNetworkF32 {
                     let src_wgt = other.weight_items(i, src_idx, tgt_idx);
                     let tgt_offset = src_idx + (tgt_idx / 2) * layer_size(i);
                     if tgt_idx % 2 == 0 {
-                        *w_vec[tgt_offset].v1_mut() = src_wgt.v1() as f32;
-                        *w_vec[tgt_offset].v2_mut() = src_wgt.v2() as f32;
-                        *w_vec[tgt_offset].v3_mut() = src_wgt.v3() as f32;
-                        *w_vec[tgt_offset].v4_mut() = src_wgt.v4() as f32;
+                        w_vec[tgt_offset].vec.v1 = src_wgt.v1() as f32;
+                        w_vec[tgt_offset].vec.v2 = src_wgt.v2() as f32;
+                        w_vec[tgt_offset].vec.v3 = src_wgt.v3() as f32;
+                        w_vec[tgt_offset].vec.v4 = src_wgt.v4() as f32;
                     } else {
-                        *w_vec[tgt_offset].v5_mut() = src_wgt.v1() as f32;
-                        *w_vec[tgt_offset].v6_mut() = src_wgt.v2() as f32;
-                        *w_vec[tgt_offset].v7_mut() = src_wgt.v3() as f32;
-                        *w_vec[tgt_offset].v8_mut() = src_wgt.v4() as f32;
+                        w_vec[tgt_offset].vec.v5 = src_wgt.v1() as f32;
+                        w_vec[tgt_offset].vec.v6 = src_wgt.v2() as f32;
+                        w_vec[tgt_offset].vec.v7 = src_wgt.v3() as f32;
+                        w_vec[tgt_offset].vec.v8 = src_wgt.v4() as f32;
                     }
                 }
             }
@@ -950,7 +1107,7 @@ impl LSTMNetworkF32 {
             .get_unchecked(src_idx + (tgt_idx / 2) * num_inputs);
         let f2: *const F32x8 = f;
         let f3: *const F32x4 = f2 as *const F32x4;
-        let f4 = f3.add((tgt_idx + 1) % 2);
+        let f4 = f3.add(tgt_idx % 2);
         let f5: &F32x4 = &*(f4 as *const F32x4);
         f5
     }
