@@ -5,7 +5,7 @@ authors = ["Mikko Juola <mikjuo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rcmaes = { git = "https://github.com/Noeda/rcmaes", rev = "dc62e643b9b1e4f5535f1a7c662ead2d14353e61" }
+rcmaes = { git = "https://github.com/Noeda/rcmaes", rev = "4358389986d929dd633c9d36cc33d41eeb8e60c8" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rand = "0.7"
