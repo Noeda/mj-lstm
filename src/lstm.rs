@@ -573,6 +573,23 @@ impl LSTMStateBase<f32, F32x8> {
         unsafe { self.lstm_propagate2(inputs) }
     }
 
+    pub fn smallest_largest_memory(&self) -> (f32, f32) {
+        let mut lowest: Option<f32> = None;
+        let mut highest: Option<f32> = None;
+        for vec in self.memories.iter() {
+            for x in vec.iter() {
+                let x: f32 = *x;
+                if lowest.is_none() || lowest > Some(x) {
+                    lowest = Some(x);
+                }
+                if highest.is_none() || highest < Some(x) {
+                    highest = Some(x);
+                }
+            }
+        }
+        (lowest.unwrap_or(0.0), highest.unwrap_or(0.0))
+    }
+
     unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f32]) -> &'b [f32] {
         assert_eq!(inputs.len(), self.network.ninputs);
 
@@ -701,6 +718,23 @@ impl LSTMStateBase<f64, F64x4> {
     #[inline]
     pub fn lstm_propagate<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
         unsafe { self.lstm_propagate2(inputs) }
+    }
+
+    pub fn smallest_largest_memory(&self) -> (f64, f64) {
+        let mut lowest: Option<f64> = None;
+        let mut highest: Option<f64> = None;
+        for vec in self.memories.iter() {
+            for x in vec.iter() {
+                let x: f64 = *x;
+                if lowest.is_none() || lowest > Some(x) {
+                    lowest = Some(x);
+                }
+                if highest.is_none() || highest < Some(x) {
+                    highest = Some(x);
+                }
+            }
+        }
+        (lowest.unwrap_or(0.0), highest.unwrap_or(0.0))
     }
 
     unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
