@@ -46,6 +46,7 @@ pub fn fast_sigmoid32(x: f32) -> f32 {
     0.5 + (x / (1.0 + x.abs())) * 0.5
 }
 
+#[inline]
 pub fn inv_sigmoid(x: f64) -> f64 {
     if x <= 0.0 {
         return -100_000.0;
@@ -54,4 +55,28 @@ pub fn inv_sigmoid(x: f64) -> f64 {
         return 100_000.0;
     }
     -(1.0 / x - 1.0).ln()
+}
+
+#[inline]
+pub fn softmax(vec: &mut [f64]) {
+    if vec.len() == 0 {
+        return;
+    }
+    let mut max_value: f64 = vec[0];
+    for idx in 1..vec.len() {
+        if vec[idx] > max_value {
+            max_value = vec[idx];
+        }
+    }
+
+    let mut denominator = 0.0;
+    for value in vec.iter_mut() {
+        let v = ((*value) - max_value).exp();
+        denominator += v;
+        *value = v;
+    }
+
+    for idx in 0..vec.len() {
+        vec[idx] = vec[idx] / denominator;
+    }
 }
