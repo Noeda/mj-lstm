@@ -9,6 +9,7 @@ rcmaes = { git = "https://github.com/Noeda/rcmaes", rev = "4358389986d929dd633c9
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rand = "0.7"
+rug = "1"
 statrs = "0.15"
 
 [dev-dependencies]

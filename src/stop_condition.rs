@@ -1,9 +1,8 @@
+use rug::Float;
 use statrs::function::erf::erf;
 
-pub fn series_is_trending_down(series: &[f64]) -> f64 {
-    if series.len() < 3 {
-        return 0.5;
-    }
+fn series_is_trending_down_varpart(series: &[f64]) -> (f64, f64) {
+    assert!(series.len() >= 3);
 
     // 1. Fit Ordinary Least Squares to the series
     // 2. Compute variance of it
@@ -59,9 +58,40 @@ pub fn series_is_trending_down(series: &[f64]) -> f64 {
     let m = b; // mean
     let var = (12.0 * var) / (n * n * n - n);
 
+    (m, var)
+}
+
+pub fn series_is_trending_down(series: &[f64]) -> f64 {
+    if series.len() < 3 {
+        return 0.5;
+    }
+
+    let (m, var) = series_is_trending_down_varpart(series);
+
     // compute P(slope < 0) (where P(slope) ~ Gaussian(m, var))
     let p = 0.5 * (1.0 + erf((0.0 - m) / (var.sqrt() * (2.0_f64).sqrt())));
     p
+}
+
+pub fn series_is_trending_down_log(series: &[f64]) -> f64 {
+    if series.len() < 3 {
+        return (0.5_f64).ln();
+    }
+
+    let (m, var) = series_is_trending_down_varpart(series);
+    // I couldn't figure out a proper way to use log(gaussian_cdf(x)) for very large/small values
+    // of x so I am cheating. I'm using GMP's very high precision math instead and not using log
+    // until the end.
+    //
+    // Works well enough for this purpose.
+    let m: Float = Float::with_val(10000, m);
+    let var: Float = Float::with_val(10000, var);
+    let half: Float = Float::with_val(10000, 0.5);
+    let one: Float = Float::with_val(10000, 1.0);
+    let two: Float = Float::with_val(10000, 2.0);
+
+    let p = (half * (one + ((-m) / (var.sqrt() * two.sqrt())).erf())).ln();
+    p.to_f64()
 }
 
 #[cfg(test)]
@@ -101,7 +131,30 @@ mod tests {
             points.push(rng.gen_range(0.0, 4.0));
         }
         let result = series_is_trending_down(&points);
-        assert!(result > 0.2);
-        assert!(result < 0.8);
+        assert!(result > 0.1);
+        assert!(result < 0.9);
+    }
+
+    #[test]
+    fn log_and_normal_match_for_small_values() {
+        let mut rng = thread_rng();
+        let mut points = vec![];
+        for x in 0..4000 {
+            points.push(rng.gen_range(0.0, 4.0));
+        }
+        let result = series_is_trending_down(&points);
+        let result2 = series_is_trending_down_log(&points).exp();
+        assert!(result - result2 <= 0.01);
+    }
+
+    #[test]
+    fn log_matches_for_extremely_unlikely_series() {
+        let mut rng = thread_rng();
+        let mut points = vec![];
+        for x in 0..4000 {
+            points.push(rng.gen_range(0.0, 4.0) + (x as f64 * 0.001));
+        }
+        let result2 = series_is_trending_down_log(&points);
+        assert!(result2 < -10000.0);
     }
 }
