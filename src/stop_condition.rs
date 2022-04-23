@@ -1,5 +1,4 @@
-use rayon::prelude::*;
-use rug::{ops::AssignRound, Float};
+use rug::Float;
 use statrs::function::erf::erf;
 use std::ops::{Add, AddAssign, Div, Mul, Sub};
 
@@ -133,8 +132,6 @@ pub fn series_is_trending_down_log(series: &[f64]) -> f64 {
     let int = (-m.clone()) / (var.clone().sqrt() * two.clone().sqrt());
 
     let p = (half * (one + ((-m) / (var.sqrt() * two.sqrt())).erf())).ln();
-    let real = p.to_f64();
-    let app = down_log_approximation(int.to_f64());
     if int > -2.0 {
         p.to_f64()
     } else {
