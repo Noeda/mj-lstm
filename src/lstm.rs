@@ -36,6 +36,29 @@ pub struct LSTMNetworkBase<T, Unpack> {
     pub(crate) no_output_bias: bool,
 }
 
+pub trait ToCStruct {
+    /*
+     * Converts the network into this C structure:
+     *
+     * struct {
+     *   uint32_t nlayers;             // at least 2 (input and output)
+     *   uint32_t output_is_sigmoid;   // 0 or 1
+     *   uint32_t no_output_bias;      // 0 or 1
+     *   uint32_t weights_offset;
+     *   uint32_t biases_offset;
+     *   uint32_t output_weights_offset;
+     *   uint32_t output_biases_offset;
+     *   uint32_t initial_memories_offset;
+     *   uint32_t last_state_weights_offset;
+     *   uint32_t[] layersizes;
+     *   T[] values;
+     * }
+     *
+     * The length of the structure will depend on the size of the network.
+     */
+    fn to_c_struct(&self, target: &mut Vec<u8>);
+}
+
 pub trait FromF64 {
     fn from_f64(f: f64) -> Self;
 }
@@ -57,7 +80,7 @@ impl FromF64 for f32 {
 #[cfg(test)]
 impl<
         T: 'static + Clone + Send + FromF64,
-        Unpack: 'static + Clone + Send + Unpackable + std::fmt::Debug + AllocateWeights,
+        Unpack: 'static + Clone + Send + Unpackable + AllocateWeights,
     > quickcheck::Arbitrary for LSTMNetworkBase<T, Unpack>
 {
     fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Self {
@@ -84,6 +107,116 @@ impl<'a> Consuming<'a> {
     fn extend(&mut self, another_vec: &mut Vec<f64>, items: usize) {
         another_vec.extend(&self.vec[self.cursor..self.cursor + items]);
         self.cursor += items;
+    }
+}
+
+impl ToCStruct for LSTMNetwork {
+    fn to_c_struct(&self, target: &mut Vec<u8>) {
+        #[repr(C)]
+        struct Header {
+            nlayers: u32,
+            output_is_sigmoid: u32,
+            no_output_bias: u32,
+            weights_offset: u32,
+            biases_offset: u32,
+            output_weights_offset: u32,
+            output_biases_offset: u32,
+            initial_memories_offset: u32,
+            last_state_weights_offset: u32,
+        }
+
+        let mut header = Header {
+            nlayers: 2 + self.weights.len() as u32,
+            output_is_sigmoid: if self.output_is_sigmoid { 1 } else { 0 },
+            no_output_bias: if self.no_output_bias { 1 } else { 0 },
+            weights_offset: 0,
+            biases_offset: 0,
+            output_weights_offset: 0,
+            output_biases_offset: 0,
+            initial_memories_offset: 0,
+            last_state_weights_offset: 0,
+        };
+
+        let mut layer_sizes: Vec<u32> = Vec::with_capacity(2 + self.weights.len());
+        layer_sizes.push(self.ninputs as u32);
+        for layer in self.last_state_weights.iter() {
+            layer_sizes.push(layer.len() as u32);
+        }
+        layer_sizes.push(self.noutputs as u32);
+        assert_eq!(layer_sizes.len(), header.nlayers as usize);
+
+        let mut values: Vec<f64> = vec![];
+
+        header.weights_offset = values.len() as u32;
+        for layer in self.weights.iter() {
+            for weight in layer.iter() {
+                values.push(weight.v1());
+                values.push(weight.v2());
+                values.push(weight.v3());
+                values.push(weight.v4());
+            }
+        }
+        header.biases_offset = values.len() as u32;
+        for layer in self.iiof_biases.iter() {
+            for bias in layer.iter() {
+                values.push(bias.v1());
+                values.push(bias.v2());
+                values.push(bias.v3());
+                values.push(bias.v4());
+            }
+        }
+
+        header.output_weights_offset = values.len() as u32;
+        for weight in self.output_layer_weights.iter() {
+            values.push(*weight);
+        }
+
+        header.output_biases_offset = values.len() as u32;
+        for bias in self.output_layer_biases.iter() {
+            values.push(*bias);
+        }
+
+        header.initial_memories_offset = values.len() as u32;
+        for memory_layer in self.initial_memories.iter() {
+            for memory in memory_layer.iter() {
+                values.push(*memory);
+            }
+        }
+
+        header.last_state_weights_offset = values.len() as u32;
+        for last_state_layer in self.last_state_weights.iter() {
+            for weight in last_state_layer.iter() {
+                values.push(weight.v1());
+                values.push(weight.v2());
+                values.push(weight.v3());
+                values.push(weight.v4());
+            }
+        }
+        let values: Vec<f32> = values.into_iter().map(|x| x as f32).collect();
+
+        target.truncate(0);
+        // Update this whenever any field changes
+        let header_sz = std::mem::size_of::<Header>();
+        assert_eq!(header_sz, 9 * 4);
+        target.reserve(values.len() * 4 + layer_sizes.len() * 4 + header_sz);
+
+        unsafe {
+            let target_ptr = target.as_mut_ptr();
+            std::ptr::copy_nonoverlapping(&header as *const Header, target_ptr as *mut Header, 1);
+            let target_ptr = target_ptr.byte_add(header_sz);
+            std::ptr::copy_nonoverlapping(
+                layer_sizes.as_ptr() as *const u32,
+                target_ptr as *mut u32,
+                layer_sizes.len(),
+            );
+            let target_ptr = target_ptr.byte_add(layer_sizes.len() * 4);
+            std::ptr::copy_nonoverlapping(
+                values.as_ptr() as *const f32,
+                target_ptr as *mut f32,
+                values.len(),
+            );
+            target.set_len(values.len() * 4 + layer_sizes.len() * 4 + header_sz);
+        }
     }
 }
 
@@ -377,7 +510,7 @@ impl AllocateWeights for F32x8 {
     }
 }
 
-impl<T: 'static + Clone + FromF64, Unpack: Unpackable + std::fmt::Debug + AllocateWeights>
+impl<T: 'static + Clone + FromF64, Unpack: Unpackable + AllocateWeights>
     LSTMNetworkBase<T, Unpack>
 {
     pub fn new(layer_sizes: &[usize]) -> Self {

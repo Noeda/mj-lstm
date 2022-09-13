@@ -1,6 +1,7 @@
 #![allow(clippy::needless_range_loop)]
 #![allow(dead_code)]
 #![feature(stdsimd)]
+#![feature(pointer_byte_offsets)]
 
 #[cfg(test)]
 #[macro_use]
