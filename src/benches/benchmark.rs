@@ -1,6 +1,24 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use mj_lstm::gru::*;
 use mj_lstm::lstm::*;
 use mj_lstm::rnn::*;
+
+pub fn gru_benchmark(c: &mut Criterion) {
+    let gru = GRUNetwork::new(&[8, 100, 100, 8]);
+    c.bench_function("gru f64 8-100-100-8 propagate", |b| {
+        b.iter(|| {
+            let mut st = black_box(&gru).start();
+            st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+    let gru = GRUNetwork::new(&[5, 8, 4, 1]);
+    c.bench_function("gru f64 5-8-4-1 propagate", |b| {
+        b.iter(|| {
+            let mut st = black_box(&gru).start();
+            st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+}
 
 pub fn lstm_benchmark(c: &mut Criterion) {
     let lstm = LSTMNetwork::new(&[8, 100, 100, 8]);
@@ -52,5 +70,5 @@ pub fn lstm_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, lstm_benchmark);
+criterion_group!(benches, gru_benchmark, lstm_benchmark);
 criterion_main!(benches);
