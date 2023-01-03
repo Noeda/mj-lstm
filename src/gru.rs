@@ -5,18 +5,48 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub(crate) struct GRUW {
-    z: f64,
-    r: f64,
-    h: f64,
+    z_raw: f64,
+    r_raw: f64,
+    h_raw: f64,
 }
 
 impl GRUW {
     fn zero() -> Self {
         GRUW {
-            z: 0.0,
-            r: 0.0,
-            h: 0.0,
+            z_raw: 0.0,
+            r_raw: 0.0,
+            h_raw: 0.0,
         }
+    }
+
+    #[inline]
+    fn z(&self) -> f64 {
+        self.z_raw
+    }
+
+    #[inline]
+    fn r(&self) -> f64 {
+        self.r_raw
+    }
+
+    #[inline]
+    fn h(&self) -> f64 {
+        self.h_raw
+    }
+
+    #[inline]
+    fn set_z(&mut self, z: f64) {
+        self.z_raw = z;
+    }
+
+    #[inline]
+    fn set_r(&mut self, r: f64) {
+        self.r_raw = r;
+    }
+
+    #[inline]
+    fn set_h(&mut self, h: f64) {
+        self.h_raw = h;
     }
 }
 
@@ -48,23 +78,23 @@ impl Vectorizable for GRUNetwork {
         let mut out = vec![];
         for w in self.i_to_h_weights.iter() {
             for gruw in w.iter() {
-                out.push(gruw.z);
-                out.push(gruw.r);
-                out.push(gruw.h);
+                out.push(gruw.z());
+                out.push(gruw.r());
+                out.push(gruw.h());
             }
         }
         for w in self.h_to_h_weights.iter() {
             for gruw in w.iter() {
-                out.push(gruw.z);
-                out.push(gruw.r);
-                out.push(gruw.h);
+                out.push(gruw.z());
+                out.push(gruw.r());
+                out.push(gruw.h());
             }
         }
         for b in self.biases.iter() {
             for gruw in b.iter() {
-                out.push(gruw.z);
-                out.push(gruw.r);
-                out.push(gruw.h);
+                out.push(gruw.z());
+                out.push(gruw.r());
+                out.push(gruw.h());
             }
         }
         for w in self.output_weights.iter() {
@@ -81,25 +111,25 @@ impl Vectorizable for GRUNetwork {
         let mut network = GRUNetwork::new(ctx);
         for w in network.i_to_h_weights.iter_mut() {
             for gruw in w.iter_mut() {
-                gruw.z = vec[cursor];
-                gruw.r = vec[cursor + 1];
-                gruw.h = vec[cursor + 2];
+                gruw.set_z(vec[cursor]);
+                gruw.set_r(vec[cursor + 1]);
+                gruw.set_h(vec[cursor + 2]);
                 cursor += 3;
             }
         }
         for w in network.h_to_h_weights.iter_mut() {
             for gruw in w.iter_mut() {
-                gruw.z = vec[cursor];
-                gruw.r = vec[cursor + 1];
-                gruw.h = vec[cursor + 2];
+                gruw.set_z(vec[cursor]);
+                gruw.set_r(vec[cursor + 1]);
+                gruw.set_h(vec[cursor + 2]);
                 cursor += 3;
             }
         }
         for b in network.biases.iter_mut() {
             for gruw in b.iter_mut() {
-                gruw.z = vec[cursor];
-                gruw.r = vec[cursor + 1];
-                gruw.h = vec[cursor + 2];
+                gruw.set_z(vec[cursor]);
+                gruw.set_r(vec[cursor + 1]);
+                gruw.set_h(vec[cursor + 2]);
                 cursor += 3;
             }
         }
@@ -208,81 +238,169 @@ impl RNNState for GRUState {
 
 impl GRUState {
     fn prop64<'a>(&mut self, inputs: &[f64]) {
-        self.outputs.resize(self.gru.num_outputs(), 0.0);
-        self.storage1.resize(self.gru.widest_layer, 0.0);
-        self.storage2.resize(self.gru.widest_layer, 0.0);
+        assert!(inputs.len() == self.gru.layer_sizes[0]);
+        unsafe {
+            self.outputs.resize(self.gru.num_outputs(), 0.0);
+            self.storage1.resize(self.gru.widest_layer, 0.0);
+            self.storage2.resize(self.gru.widest_layer, 0.0);
 
-        for idx in 0..inputs.len() {
-            self.storage1[idx] = inputs[idx];
-        }
-
-        for layer_idx in 0..self.gru.biases.len() {
-            let previous_layer_size = self.gru.layer_sizes[layer_idx];
-            let layer_size = self.gru.layer_sizes[layer_idx + 1];
-            for target_idx in 0..layer_size {
-                // compute z[t]
-                let mut zt = self.gru.biases[layer_idx][target_idx].z;
-                for source_idx in 0..previous_layer_size {
-                    zt += self.gru.i_to_h_weights[layer_idx]
-                        [source_idx + target_idx * previous_layer_size]
-                        .z
-                        * self.storage1[source_idx];
-                }
-                for source_idx in 0..layer_size {
-                    zt += self.gru.h_to_h_weights[layer_idx][source_idx + target_idx * layer_size]
-                        .z
-                        * self.memories[layer_idx][source_idx];
-                }
-                zt = fast_sigmoid(zt);
-
-                // compute r[t]
-                let mut rt = self.gru.biases[layer_idx][target_idx].r;
-                for source_idx in 0..previous_layer_size {
-                    rt += self.gru.i_to_h_weights[layer_idx]
-                        [source_idx + target_idx * previous_layer_size]
-                        .r
-                        * self.storage1[source_idx];
-                }
-                for source_idx in 0..layer_size {
-                    rt += self.gru.h_to_h_weights[layer_idx][source_idx + target_idx * layer_size]
-                        .r
-                        * self.memories[layer_idx][source_idx];
-                }
-                rt = fast_sigmoid(rt);
-
-                // compute h^[t]
-                let mut ht = self.gru.biases[layer_idx][target_idx].h;
-                for source_idx in 0..previous_layer_size {
-                    ht += self.gru.i_to_h_weights[layer_idx]
-                        [source_idx + target_idx * previous_layer_size]
-                        .h
-                        * self.storage1[source_idx];
-                }
-                for source_idx in 0..layer_size {
-                    ht += self.gru.h_to_h_weights[layer_idx][source_idx + target_idx * layer_size]
-                        .h
-                        * self.memories[layer_idx][source_idx]
-                        * rt;
-                }
-                ht = fast_sigmoid(ht) * 2.0 - 1.0;
-
-                // compute h[t] (next hidden state, also output)
-                let ht_final = (1.0 - zt) * self.memories[layer_idx][target_idx] + zt * ht;
-                self.memories2[layer_idx][target_idx] = ht_final;
-                self.storage2[target_idx] = ht_final;
+            for idx in 0..inputs.len() {
+                *self.storage1.get_unchecked_mut(idx) = *inputs.get_unchecked(idx);
             }
-            std::mem::swap(&mut self.storage1, &mut self.storage2);
-        }
-        for target_idx in 0..self.gru.num_outputs() {
-            let mut sum = self.gru.output_biases[target_idx];
-            let sz = self.gru.layer_sizes[self.gru.layer_sizes.len() - 2];
-            for source_idx in 0..sz {
-                sum += self.gru.output_weights[source_idx + target_idx * sz]
-                    * self.storage1[source_idx];
+
+            for layer_idx in 0..self.gru.biases.len() {
+                let previous_layer_size = *self.gru.layer_sizes.get_unchecked(layer_idx);
+                let layer_size = *self.gru.layer_sizes.get_unchecked(layer_idx + 1);
+                for target_idx in 0..layer_size {
+                    // compute z[t]
+                    let mut zt = self
+                        .gru
+                        .biases
+                        .get_unchecked(layer_idx)
+                        .get_unchecked(target_idx)
+                        .z();
+                    for source_idx in 0..previous_layer_size {
+                        zt += self
+                            .gru
+                            .i_to_h_weights
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(source_idx + target_idx * previous_layer_size)
+                            .z()
+                            * self.storage1.get_unchecked(source_idx);
+                    }
+                    for source_idx in 0..layer_size {
+                        zt += self
+                            .gru
+                            .h_to_h_weights
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(source_idx + target_idx * layer_size)
+                            .z()
+                            * *self
+                                .memories
+                                .get_unchecked(layer_idx)
+                                .get_unchecked(source_idx);
+                    }
+                    zt = fast_sigmoid(zt);
+
+                    // compute r[t]
+                    let mut rt = self
+                        .gru
+                        .biases
+                        .get_unchecked(layer_idx)
+                        .get_unchecked(target_idx)
+                        .r();
+                    for source_idx in 0..previous_layer_size {
+                        rt += self
+                            .gru
+                            .i_to_h_weights
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(source_idx + target_idx * previous_layer_size)
+                            .r()
+                            * *self.storage1.get_unchecked(source_idx);
+                    }
+                    for source_idx in 0..layer_size {
+                        rt += self
+                            .gru
+                            .h_to_h_weights
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(source_idx + target_idx * layer_size)
+                            .r()
+                            * *self
+                                .memories
+                                .get_unchecked(layer_idx)
+                                .get_unchecked(source_idx);
+                    }
+                    rt = fast_sigmoid(rt);
+
+                    // compute h^[t]
+                    let mut ht = self
+                        .gru
+                        .biases
+                        .get_unchecked(layer_idx)
+                        .get_unchecked(target_idx)
+                        .h();
+                    for source_idx in 0..previous_layer_size {
+                        ht += self
+                            .gru
+                            .i_to_h_weights
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(source_idx + target_idx * previous_layer_size)
+                            .h()
+                            * *self.storage1.get_unchecked(source_idx);
+                    }
+                    for source_idx in 0..layer_size {
+                        ht += self
+                            .gru
+                            .h_to_h_weights
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(source_idx + target_idx * layer_size)
+                            .h()
+                            * *self
+                                .memories
+                                .get_unchecked(layer_idx)
+                                .get_unchecked(source_idx)
+                            * rt;
+                    }
+                    ht = fast_sigmoid(ht) * 2.0 - 1.0;
+
+                    // compute h[t] (next hidden state, also output)
+                    let ht_final = (1.0 - zt)
+                        * *self
+                            .memories
+                            .get_unchecked(layer_idx)
+                            .get_unchecked(target_idx)
+                        + zt * ht;
+                    *self
+                        .memories2
+                        .get_unchecked_mut(layer_idx)
+                        .get_unchecked_mut(target_idx) = ht_final;
+                    *self.storage2.get_unchecked_mut(target_idx) = ht_final;
+                }
+                std::mem::swap(&mut self.storage1, &mut self.storage2);
             }
-            sum = fast_sigmoid(sum);
-            self.outputs[target_idx] = sum;
+            for target_idx in 0..self.gru.num_outputs() {
+                let mut sum = *self.gru.output_biases.get_unchecked(target_idx);
+                let sz = *self
+                    .gru
+                    .layer_sizes
+                    .get_unchecked(self.gru.layer_sizes.len() - 2);
+                for source_idx in 0..sz {
+                    sum += *self
+                        .gru
+                        .output_weights
+                        .get_unchecked(source_idx + target_idx * sz)
+                        * *self.storage1.get_unchecked(source_idx);
+                }
+                sum = fast_sigmoid(sum);
+                *self.outputs.get_unchecked_mut(target_idx) = sum;
+            }
+            std::mem::swap(&mut self.memories, &mut self.memories2);
         }
-        std::mem::swap(&mut self.memories, &mut self.memories2);
+    }
+}
+
+#[cfg(test)]
+impl quickcheck::Arbitrary for GRUNetwork {
+    fn arbitrary<G: quickcheck::Gen>(g: &mut G) -> Self {
+        let nlayers: usize = std::cmp::max(2, usize::arbitrary(g) % 20);
+        let mut layer_sizes: Vec<usize> = vec![];
+        for _ in 0..nlayers {
+            layer_sizes.push(std::cmp::max(1, usize::arbitrary(g) % 30));
+        }
+
+        GRUNetwork::new(&layer_sizes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    quickcheck! {
+        fn to_vec_from_vec_id(network: GRUNetwork) -> bool {
+            let (vec, ctx) = network.to_vec();
+            let new_network = GRUNetwork::from_vec(&vec, &ctx);
+            new_network == network
+        }
     }
 }
