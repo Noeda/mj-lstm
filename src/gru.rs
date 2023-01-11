@@ -237,6 +237,24 @@ impl RNNState for GRUState {
 }
 
 impl GRUState {
+    pub fn memories(&self) -> Vec<f64> {
+        let mut result = vec![];
+        for m in self.memories.iter() {
+            result.extend_from_slice(m);
+        }
+        result
+    }
+
+    pub fn set_memories(&mut self, memories: &[f64]) {
+        let mut cursor = 0;
+        for m in self.memories.iter_mut() {
+            for m2 in m.iter_mut() {
+                *m2 = memories[cursor];
+                cursor += 1;
+            }
+        }
+    }
+
     fn prop64<'a>(&mut self, inputs: &[f64]) {
         assert!(inputs.len() == self.gru.layer_sizes[0]);
         unsafe {

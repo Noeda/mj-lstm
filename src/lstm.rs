@@ -700,6 +700,18 @@ fn div2_round_up(x: usize) -> usize {
     x / 2 + x % 2
 }
 
+impl<T: 'static + Clone + FromF64, Unpack: Unpackable + AllocateWeights> LSTMStateBase<T, Unpack> {
+    pub fn memories(&self) -> Vec<T> {
+        let mut result = vec![];
+        for m in self.memories.iter() {
+            for v in m.iter() {
+                result.push(v.clone());
+            }
+        }
+        result
+    }
+}
+
 impl LSTMStateBase<f32, F32x8> {
     #[inline]
     pub fn lstm_propagate<'b>(&'b mut self, inputs: &[f32]) -> &'b [f32] {
