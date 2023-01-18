@@ -143,8 +143,8 @@ impl F32x8 {
     #[inline]
     #[target_feature(enable = "avx")]
     #[target_feature(enable = "avx2")]
-    pub(crate) fn zero(&mut self) {
-        self.val = unsafe { _mm256_setzero_ps() };
+    pub(crate) unsafe fn zero(&mut self) {
+        self.val = _mm256_setzero_ps();
     }
 
     #[inline]
@@ -229,6 +229,13 @@ impl F64x4 {
         let plus_one = _mm256_add_pd(one, self_abs);
         let xdivided = _mm256_div_pd(self.val, plus_one);
         self.val = _mm256_fmadd_pd(xdivided, half, half)
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    pub(crate) unsafe fn zero(&mut self) {
+        self.val = _mm256_setzero_pd();
     }
 
     #[inline]
