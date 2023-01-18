@@ -72,6 +72,26 @@ impl GradientRecordF64 {
     }
 
     #[inline]
+    pub fn v1_mut(&mut self) -> &mut Reverse<f64> {
+        &mut self.v1
+    }
+
+    #[inline]
+    pub fn v2_mut(&mut self) -> &mut Reverse<f64> {
+        &mut self.v2
+    }
+
+    #[inline]
+    pub fn v3_mut(&mut self) -> &mut Reverse<f64> {
+        &mut self.v3
+    }
+
+    #[inline]
+    pub fn v4_mut(&mut self) -> &mut Reverse<f64> {
+        &mut self.v4
+    }
+
+    #[inline]
     pub fn mul_add_scalar(&mut self, a: Reverse<f64>, b: &GradientRecordF64) {
         self.v1 = self.v1.clone() + a.clone() * b.v1.clone();
         self.v2 = self.v2.clone() + a.clone() * b.v2.clone();

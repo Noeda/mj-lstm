@@ -402,7 +402,7 @@ dependencies = [
 [[package]]
 name = "mj-autograd"
 version = "0.1.0"
-source = "git+https://github.com/Noeda/mj-autograd?rev=daabada2c63927143d49134380e536654e7da90f#daabada2c63927143d49134380e536654e7da90f"
+source = "git+https://github.com/Noeda/mj-autograd?rev=896b28d97baa6763e08d4048132cdc18f490baa5#896b28d97baa6763e08d4048132cdc18f490baa5"
 dependencies = [
  "num",
 ]
