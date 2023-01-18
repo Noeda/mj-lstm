@@ -52,6 +52,11 @@ impl F32x4 {
         self.val = vfmaq_f32(self.val, other3.val, acc.val);
     }
 
+    #[inline]
+    pub(crate) fn zero(&mut self) {
+        self.val = unsafe { vdupq_n_f32(0.0) };
+    }
+
     pub(crate) unsafe fn fast_sigmoid(&mut self) {
         let half: float32x4_t = vmovq_n_f32(0.5);
         let one: float32x4_t = vmovq_n_f32(1.0);
@@ -134,6 +139,14 @@ impl F32x8 {
         let broadcast_other2: float32x4_t = vmovq_n_f32(other2);
         self.val.0 = vfmaq_f32(self.val.0, other3.val.0, broadcast_other1);
         self.val.1 = vfmaq_f32(self.val.1, other3.val.1, broadcast_other2);
+    }
+
+    #[inline]
+    pub(crate) fn zero(&mut self) {
+        unsafe {
+            self.val.0 = vdupq_n_f32(0.0);
+            self.val.1 = vdupq_n_f32(0.0);
+        }
     }
 
     #[inline]
@@ -246,6 +259,14 @@ impl F64x4 {
         let broadcast_other2: float64x2_t = vmovq_n_f64(other2);
         self.val.0 = vfmaq_f64(self.val.0, other3.val.0, broadcast_other1);
         self.val.1 = vfmaq_f64(self.val.1, other3.val.1, broadcast_other2);
+    }
+
+    #[inline]
+    pub(crate) fn zero(&mut self) {
+        unsafe {
+            self.val.0 = vdupq_n_f64(0.0);
+            self.val.1 = vdupq_n_f64(0.0);
+        }
     }
 
     #[inline]

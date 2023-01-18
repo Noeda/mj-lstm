@@ -10,6 +10,7 @@ extern crate quickcheck;
 #[cfg(test)]
 pub mod simd_tests;
 
+pub mod gradient;
 pub mod gru;
 pub mod lstm;
 pub mod rnn;

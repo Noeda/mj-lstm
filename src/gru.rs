@@ -218,6 +218,9 @@ impl RNN for GRUNetwork {
 }
 
 impl RNNState for GRUState {
+    type InputType = f64;
+    type OutputType = f64;
+
     fn reset(&mut self) {
         for v in self.memories.iter_mut() {
             for v2 in v.iter_mut() {

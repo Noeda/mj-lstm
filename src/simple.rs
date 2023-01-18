@@ -208,6 +208,9 @@ impl RNN for SimpleRNNBase {
 }
 
 impl RNNState for SimpleRNNState {
+    type InputType = f64;
+    type OutputType = f64;
+
     fn reset(&mut self) {
         for m in self.memories.iter_mut() {
             *m = 0.0;

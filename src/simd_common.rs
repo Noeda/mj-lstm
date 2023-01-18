@@ -1,3 +1,4 @@
+use mj_autograd::*;
 use serde::{Deserialize, Serialize};
 
 #[repr(C)]
@@ -37,8 +38,33 @@ pub fn sigmoid(x: f64) -> f64 {
 }
 
 #[inline]
+pub fn fast_sigmoid_derivative(x: f64) -> f64 {
+    if x >= 0.0 {
+        0.5 / (x + 1.0).powi(2)
+    } else {
+        0.5 / (-x + 1.0).powi(2)
+    }
+}
+
+#[inline]
+pub fn fast_sigmoid_reverse(x: Reverse<f64>) -> Reverse<f64> {
+    let x_abs = x.abs();
+    Reverse::auto(0.5) + (x / (Reverse::auto(1.0) + x_abs)) * Reverse::auto(0.5)
+}
+
+#[inline]
 pub fn fast_sigmoid(x: f64) -> f64 {
     0.5 + (x / (1.0 + x.abs())) * 0.5
+}
+
+#[inline]
+pub fn inv_fast_sigmoid(y: f64) -> f64 {
+    // x positive?
+    if y >= 0.5 {
+        1.0 / (1.0 / (2.0 * (y - 0.5)) - 1.0)
+    } else {
+        1.0 / (1.0 / (2.0 * (y - 0.5)) + 1.0)
+    }
 }
 
 #[inline]

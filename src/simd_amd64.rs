@@ -143,6 +143,13 @@ impl F32x8 {
     #[inline]
     #[target_feature(enable = "avx")]
     #[target_feature(enable = "avx2")]
+    pub(crate) fn zero(&mut self) {
+        self.val = unsafe { _mm256_setzero_ps() };
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
     #[target_feature(enable = "fma")]
     pub(crate) unsafe fn fast_sigmoid(&mut self) {
         let half = _mm256_broadcast_ss(&0.5);

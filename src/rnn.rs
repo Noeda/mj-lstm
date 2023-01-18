@@ -1,5 +1,8 @@
 pub trait RNNState {
-    fn propagate<'a, 'b>(&'a mut self, inputs: &'b [f64]) -> &'a [f64];
+    type InputType;
+    type OutputType;
+
+    fn propagate<'a, 'b>(&'a mut self, inputs: &'b [Self::InputType]) -> &'a [Self::OutputType];
     fn propagate32<'a, 'b>(&'a mut self, inputs: &'b [f32]) -> &'a [f32];
     fn reset(&mut self);
 }
