@@ -69,6 +69,7 @@ pub trait FromF64 {
 
     fn ln(&self) -> Self;
     fn abs(&self) -> Self;
+    fn fast_sigmoid(&self) -> Self;
 }
 
 impl FromF64 for Reverse<f64> {
@@ -87,6 +88,10 @@ impl FromF64 for Reverse<f64> {
 
     fn abs(&self) -> Self {
         Reverse::<f64>::abs(&self)
+    }
+
+    fn fast_sigmoid(&self) -> Self {
+        fast_sigmoid_reverse(self.clone())
     }
 }
 
@@ -107,6 +112,10 @@ impl FromF64 for Reverse<f32> {
     fn abs(&self) -> Self {
         Reverse::<f32>::abs(&self)
     }
+
+    fn fast_sigmoid(&self) -> Self {
+        fast_sigmoid_reverse32(self.clone())
+    }
 }
 
 impl FromF64 for f64 {
@@ -126,6 +135,10 @@ impl FromF64 for f64 {
     fn abs(&self) -> Self {
         f64::abs(*self)
     }
+
+    fn fast_sigmoid(&self) -> Self {
+        fast_sigmoid(*self)
+    }
 }
 
 impl FromF64 for f32 {
@@ -139,11 +152,15 @@ impl FromF64 for f32 {
     }
 
     fn ln(&self) -> Self {
-        self.ln()
+        f32::ln(*self)
     }
 
     fn abs(&self) -> Self {
-        self.abs()
+        f32::abs(*self)
+    }
+
+    fn fast_sigmoid(&self) -> Self {
+        fast_sigmoid32(*self)
     }
 }
 
