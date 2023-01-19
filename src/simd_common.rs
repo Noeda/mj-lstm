@@ -53,6 +53,12 @@ pub fn fast_sigmoid_reverse(x: Reverse<f64>) -> Reverse<f64> {
 }
 
 #[inline]
+pub fn fast_sigmoid_reverse32(x: Reverse<f32>) -> Reverse<f32> {
+    let x_abs = x.abs();
+    Reverse::auto(0.5) + (x / (Reverse::auto(1.0) + x_abs)) * Reverse::auto(0.5)
+}
+
+#[inline]
 pub fn fast_sigmoid(x: f64) -> f64 {
     0.5 + (x / (1.0 + x.abs())) * 0.5
 }

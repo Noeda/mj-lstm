@@ -20,6 +20,7 @@ use std::mem;
 pub type LSTMNetwork = LSTMNetworkBase<f64, F64x4>;
 pub type LSTMNetworkF32 = LSTMNetworkBase<f32, F32x8>;
 pub type LSTMNetworkGradient = LSTMNetworkBase<Reverse<f64>, GradientRecordF64>;
+pub type LSTMNetworkGradientF32 = LSTMNetworkBase<Reverse<f32>, GradientRecordF32>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub struct LSTMNetworkBase<T, Unpack> {
@@ -86,6 +87,25 @@ impl FromF64 for Reverse<f64> {
 
     fn abs(&self) -> Self {
         Reverse::<f64>::abs(&self)
+    }
+}
+
+impl FromF64 for Reverse<f32> {
+    #[inline]
+    fn from_f64(f: f64) -> Self {
+        Reverse::auto(f as f32)
+    }
+
+    fn to_f64(&self) -> f64 {
+        *self.value() as f64
+    }
+
+    fn ln(&self) -> Self {
+        Reverse::<f32>::ln(&self)
+    }
+
+    fn abs(&self) -> Self {
+        Reverse::<f32>::abs(&self)
     }
 }
 
@@ -474,6 +494,7 @@ impl Vectorizable for LSTMNetwork {
 pub type LSTMState = LSTMStateBase<f64, F64x4>;
 pub type LSTMStateF32 = LSTMStateBase<f32, F32x8>;
 pub type LSTMStateGradient = LSTMStateBase<Reverse<f64>, GradientRecordF64>;
+pub type LSTMStateGradientF32 = LSTMStateBase<Reverse<f32>, GradientRecordF32>;
 
 #[derive(Clone, Debug)]
 pub struct LSTMStateBase<T, Unpack> {
@@ -673,55 +694,6 @@ impl<T: 'static + Clone + FromF64, Unpack: Clone> RNN for LSTMNetworkBase<T, Unp
     }
 }
 
-/*
-impl RNN for LSTMNetworkBase<Reverse<f64>, GradientRecordF64> {
-    type RNNState = LSTMStateBase<Reverse<f64>, GradientRecordF64>;
-
-    fn start(&self) -> LSTMStateBase<Reverse<f64>, GradientRecordF64> {
-        let mut la: Vec<Vec<Reverse<f64>>> = Vec::with_capacity(self.initial_memories.len());
-        for i in 0..self.initial_memories.len() {
-            la.push(vec![Reverse::auto(0.0); self.initial_memories[i].len()]);
-        }
-        LSTMStateBase {
-            selfwork: self.clone(),
-            memories: self.initial_memories.clone(),
-            last_activations: la,
-            storage1: vec![Reverse::auto(0.0); self.widest_layer_size],
-            storage2: vec![Reverse::auto(0.0); self.widest_layer_size],
-            storagef32: vec![0.0; self.noutputs],
-            storagef64: vec![0.0; self.noutputs],
-        }
-    }
-}
-*/
-
-// TODO: Figure out how to implement RNNState for gradient networks.
-// I was killed by lifetimes last time and dont' want to spend time on this when it can be used
-// without the trait.
-//
-// I.e. impl RNNState for LSTMStateBase  .... etc. instead of just impl LSTMStateBase
-
-/*
-impl LSTMStateBase<Reverse<f64>, GradientRecordF64> {
-    pub fn propagate(&mut self, inputs: &[Reverse<f64>]) -> &[Reverse<f64>] {
-        self.lstm_propagate(inputs)
-    }
-
-    pub fn reset(&mut self) {
-        for (idx, m) in self.network.initial_memories.iter().enumerate() {
-            unsafe {
-                self.memories.get_unchecked_mut(idx)[..].clone_from_slice(m);
-            }
-        }
-        for layer in self.last_activations.iter_mut() {
-            for m in layer.iter_mut() {
-                *m = Reverse::auto(0.0);
-            }
-        }
-    }
-}
-*/
-
 impl RNNState for LSTMStateBase<Reverse<f64>, GradientRecordF64> {
     type InputType = Reverse<f64>;
     type OutputType = Reverse<f64>;
@@ -734,6 +706,44 @@ impl RNNState for LSTMStateBase<Reverse<f64>, GradientRecordF64> {
         let mut inputs64: Vec<Reverse<f64>> = Vec::with_capacity(inputs.len());
         for i in inputs.iter() {
             inputs64.push(Reverse::auto(*i as f64));
+        }
+        let storagef32: *mut f32 = self.storagef32.as_mut_ptr();
+        let noutputs = self.network.noutputs;
+        let out = self.lstm_propagate(&inputs64);
+        for idx in 0..noutputs {
+            unsafe {
+                *storagef32.add(idx) = *out.get_unchecked(idx).value() as f32;
+            }
+        }
+        &self.storagef32[..]
+    }
+
+    fn reset(&mut self) {
+        for (idx, m) in self.network.initial_memories.iter().enumerate() {
+            unsafe {
+                self.memories.get_unchecked_mut(idx)[..].clone_from_slice(m);
+            }
+        }
+        for layer in self.last_activations.iter_mut() {
+            for m in layer.iter_mut() {
+                *m = Reverse::auto(0.0);
+            }
+        }
+    }
+}
+
+impl RNNState for LSTMStateBase<Reverse<f32>, GradientRecordF32> {
+    type InputType = Reverse<f32>;
+    type OutputType = Reverse<f32>;
+
+    fn propagate(&mut self, inputs: &[Reverse<f32>]) -> &[Reverse<f32>] {
+        self.lstm_propagate(inputs)
+    }
+
+    fn propagate32<'b>(&mut self, inputs: &'b [f32]) -> &[f32] {
+        let mut inputs64: Vec<Reverse<f32>> = Vec::with_capacity(inputs.len());
+        for i in inputs.iter() {
+            inputs64.push(Reverse::auto(*i as f32));
         }
         let storagef32: *mut f32 = self.storagef32.as_mut_ptr();
         let noutputs = self.network.noutputs;
@@ -1209,6 +1219,113 @@ impl LSTMStateBase<Reverse<f64>, GradientRecordF64> {
                 }
                 if self.network.output_is_sigmoid {
                     *outputs1.get_unchecked_mut(tgt_idx) = fast_sigmoid_reverse(v);
+                } else {
+                    *outputs1.get_unchecked_mut(tgt_idx) = v;
+                }
+            }
+            &outputs1[0..self.network.noutputs]
+        }
+    }
+}
+
+impl LSTMStateBase<Reverse<f32>, GradientRecordF32> {
+    #[inline]
+    pub fn lstm_propagate(&mut self, inputs: &[Reverse<f32>]) -> &[Reverse<f32>] {
+        unsafe {
+            if !self.network.initial_memories.is_empty() {
+                assert_eq!(
+                    inputs.len() * self.network.initial_memories[0].len(),
+                    self.network.weights[0].len()
+                );
+            }
+
+            let mut outputs1 = &mut self.storage1;
+            let mut outputs2 = &mut self.storage2;
+
+            for idx in 0..inputs.len() {
+                outputs2[idx] = inputs[idx].clone();
+            }
+
+            let mut num_inputs = inputs.len();
+            for i in 0..self.network.weights.len() {
+                let layer_size = self.network.initial_memories.get_unchecked(i).len();
+                for tgt_idx in 0..layer_size {
+                    let mut iiof = self
+                        .network
+                        .iiof_biases
+                        .get_unchecked(i)
+                        .get_unchecked(tgt_idx)
+                        .clone();
+                    let last_act = self
+                        .last_activations
+                        .get_unchecked(i)
+                        .get_unchecked(tgt_idx);
+                    iiof.mul_add_scalar(
+                        last_act.clone(),
+                        &*self
+                            .network
+                            .last_state_weights
+                            .get_unchecked(i)
+                            .get_unchecked(tgt_idx),
+                    );
+
+                    for src_idx in 0..num_inputs {
+                        let item = self.network.weight_items(i, src_idx, tgt_idx);
+                        iiof.mul_add_scalar(outputs2.get_unchecked(src_idx).clone(), item);
+                    }
+
+                    let mut iiof_sigmoid = iiof;
+                    iiof_sigmoid.fast_sigmoid();
+
+                    let input_gate_s = iiof_sigmoid.v2();
+                    let input_s = iiof_sigmoid.v1() * Reverse::auto(2.0) - Reverse::auto(1.0);
+
+                    let new_memory = self
+                        .memories
+                        .get_unchecked(i)
+                        .get_unchecked(tgt_idx)
+                        .clone()
+                        * iiof_sigmoid.v4()
+                        + input_s * input_gate_s;
+
+                    let output_s = iiof_sigmoid.v3();
+                    let output_v = (fast_sigmoid_reverse32(new_memory.clone())
+                        * Reverse::auto(2.0)
+                        - Reverse::auto(1.0))
+                        * output_s;
+
+                    *outputs1.get_unchecked_mut(tgt_idx) = output_v.clone();
+                    *self
+                        .memories
+                        .get_unchecked_mut(i)
+                        .get_unchecked_mut(tgt_idx) = new_memory;
+                    *self
+                        .last_activations
+                        .get_unchecked_mut(i)
+                        .get_unchecked_mut(tgt_idx) = output_v;
+                }
+                mem::swap(&mut outputs1, &mut outputs2);
+                num_inputs = self.memories.get_unchecked(i).len();
+            }
+            for tgt_idx in 0..self.network.noutputs {
+                let mut v: Reverse<f32> = if self.network.no_output_bias {
+                    Reverse::auto(0.0)
+                } else {
+                    self.network
+                        .output_layer_biases
+                        .get_unchecked(tgt_idx)
+                        .clone()
+                };
+                for src_idx in 0..num_inputs {
+                    v = v + outputs2.get_unchecked(src_idx).clone()
+                        * self
+                            .network
+                            .output_layer_weights
+                            .get_unchecked(src_idx + tgt_idx * num_inputs)
+                            .clone();
+                }
+                if self.network.output_is_sigmoid {
+                    *outputs1.get_unchecked_mut(tgt_idx) = fast_sigmoid_reverse32(v);
                 } else {
                     *outputs1.get_unchecked_mut(tgt_idx) = v;
                 }
@@ -1802,6 +1919,235 @@ impl LSTMNetworkBase<Reverse<f64>, GradientRecordF64> {
 
     #[inline]
     fn weight_items(&self, layer: usize, src_idx: usize, tgt_idx: usize) -> &GradientRecordF64 {
+        unsafe {
+            let num_inputs = if layer == 0 {
+                self.ninputs
+            } else {
+                self.initial_memories.get_unchecked(layer - 1).len()
+            };
+            self.weights
+                .get_unchecked(layer)
+                .get_unchecked(src_idx + tgt_idx * num_inputs)
+        }
+    }
+}
+
+impl LSTMNetworkBase<Reverse<f32>, GradientRecordF32> {
+    pub fn walk<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut Reverse<f32>),
+    {
+        for w in self.weights.iter_mut() {
+            for u in w.iter_mut() {
+                callback(u.v1_mut());
+                callback(u.v2_mut());
+                callback(u.v3_mut());
+                callback(u.v4_mut());
+            }
+        }
+
+        for w in self.last_state_weights.iter_mut() {
+            for u in w.iter_mut() {
+                callback(u.v1_mut());
+                callback(u.v2_mut());
+                callback(u.v3_mut());
+                callback(u.v4_mut());
+            }
+        }
+
+        for w in self.iiof_biases.iter_mut() {
+            for u in w.iter_mut() {
+                callback(u.v1_mut());
+                callback(u.v2_mut());
+                callback(u.v3_mut());
+                callback(u.v4_mut());
+            }
+        }
+
+        for w in self.initial_memories.iter_mut() {
+            for u in w.iter_mut() {
+                callback(u);
+            }
+        }
+
+        for w in self.output_layer_biases.iter_mut() {
+            callback(w);
+        }
+
+        for w in self.output_layer_weights.iter_mut() {
+            callback(w);
+        }
+    }
+
+    pub fn from_f64(net: &LSTMNetwork, tape: Tape<f32>) -> Self {
+        let ninputs = net.ninputs;
+        let noutputs = net.noutputs;
+        let output_is_sigmoid = net.output_is_sigmoid;
+        let no_output_bias = net.no_output_bias;
+        let widest_layer_size = net.widest_layer_size;
+
+        let weights = net
+            .weights
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| GradientRecordF32::from_f64x4(*x, tape.clone()))
+                    .collect()
+            })
+            .collect();
+
+        let last_state_weights = net
+            .last_state_weights
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| GradientRecordF32::from_f64x4(*x, tape.clone()))
+                    .collect()
+            })
+            .collect();
+
+        let iiof_biases = net
+            .iiof_biases
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| GradientRecordF32::from_f64x4(*x, tape.clone()))
+                    .collect()
+            })
+            .collect();
+
+        let initial_memories = net
+            .initial_memories
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| Reverse::reversible(*x as f32, tape.clone()))
+                    .collect()
+            })
+            .collect();
+
+        let output_layer_biases = net
+            .output_layer_biases
+            .iter()
+            .map(|x| Reverse::reversible(*x as f32, tape.clone()))
+            .collect();
+
+        let output_layer_weights = net
+            .output_layer_weights
+            .iter()
+            .map(|x| Reverse::reversible(*x as f32, tape.clone()))
+            .collect();
+
+        LSTMNetworkBase {
+            weights,
+            last_state_weights,
+            iiof_biases,
+            initial_memories,
+            output_layer_biases,
+            output_layer_weights,
+            ninputs,
+            noutputs,
+            output_is_sigmoid,
+            no_output_bias,
+            widest_layer_size,
+        }
+    }
+
+    pub fn to_f64(&self) -> LSTMNetwork {
+        unsafe {
+            let ninputs = self.ninputs;
+            let noutputs = self.noutputs;
+            let output_is_sigmoid = self.output_is_sigmoid;
+            let no_output_bias = self.no_output_bias;
+            let widest_layer_size = self.widest_layer_size;
+
+            let weights = self
+                .weights
+                .iter()
+                .map(|x| {
+                    x.iter()
+                        .map(|x| {
+                            F64x4::new(
+                                *x.v1().value() as f64,
+                                *x.v2().value() as f64,
+                                *x.v3().value() as f64,
+                                *x.v4().value() as f64,
+                            )
+                        })
+                        .collect()
+                })
+                .collect();
+
+            let last_state_weights = self
+                .last_state_weights
+                .iter()
+                .map(|x| {
+                    x.iter()
+                        .map(|x| {
+                            F64x4::new(
+                                *x.v1().value() as f64,
+                                *x.v2().value() as f64,
+                                *x.v3().value() as f64,
+                                *x.v4().value() as f64,
+                            )
+                        })
+                        .collect()
+                })
+                .collect();
+
+            let iiof_biases = self
+                .iiof_biases
+                .iter()
+                .map(|x| {
+                    x.iter()
+                        .map(|x| {
+                            F64x4::new(
+                                *x.v1().value() as f64,
+                                *x.v2().value() as f64,
+                                *x.v3().value() as f64,
+                                *x.v4().value() as f64,
+                            )
+                        })
+                        .collect()
+                })
+                .collect();
+
+            let initial_memories = self
+                .initial_memories
+                .iter()
+                .map(|x| x.iter().map(|x| *x.value() as f64).collect())
+                .collect();
+
+            let output_layer_biases = self
+                .output_layer_biases
+                .iter()
+                .map(|x| *x.value() as f64)
+                .collect();
+
+            let output_layer_weights = self
+                .output_layer_weights
+                .iter()
+                .map(|x| *x.value() as f64)
+                .collect();
+
+            LSTMNetworkBase {
+                weights,
+                last_state_weights,
+                iiof_biases,
+                initial_memories,
+                output_layer_biases,
+                output_layer_weights,
+                ninputs,
+                noutputs,
+                output_is_sigmoid,
+                no_output_bias,
+                widest_layer_size,
+            }
+        }
+    }
+
+    #[inline]
+    fn weight_items(&self, layer: usize, src_idx: usize, tgt_idx: usize) -> &GradientRecordF32 {
         unsafe {
             let num_inputs = if layer == 0 {
                 self.ninputs
