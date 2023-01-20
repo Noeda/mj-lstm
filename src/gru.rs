@@ -1,6 +1,7 @@
 use crate::lstm::FromF64;
 use crate::rnn::{RNNState, RNN};
 use mj_autograd::*;
+use num::traits::{One, Zero};
 use rcmaes::Vectorizable;
 use serde::{Deserialize, Serialize};
 
@@ -11,12 +12,31 @@ pub(crate) struct GRUW<T> {
     h_raw: T,
 }
 
-impl<T: FromF64 + Clone> GRUW<T> {
+impl<T: FromF64 + Clone + One + Zero + std::ops::Add<Output = T> + std::ops::Mul<Output = T>>
+    GRUW<T>
+{
     fn zero() -> Self {
         GRUW {
             z_raw: T::from_f64(0.0),
             r_raw: T::from_f64(0.0),
             h_raw: T::from_f64(0.0),
+        }
+    }
+
+    fn walk<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut T),
+    {
+        callback(&mut self.z_raw);
+        callback(&mut self.r_raw);
+        callback(&mut self.h_raw);
+    }
+
+    fn to_f64(&self) -> GRUW<f64> {
+        GRUW {
+            z_raw: self.z_raw.to_f64(),
+            r_raw: self.r_raw.to_f64(),
+            h_raw: self.h_raw.to_f64(),
         }
     }
 
@@ -51,6 +71,16 @@ impl<T: FromF64 + Clone> GRUW<T> {
     }
 }
 
+impl<T: FromF64 + Clone + Zero + One> GRUW<Reverse<T>> {
+    fn from_f64(f: GRUW<f64>, tape: Tape<T>) -> Self {
+        GRUW {
+            z_raw: Reverse::reversible(T::from_f64(f.z_raw), tape.clone()),
+            r_raw: Reverse::reversible(T::from_f64(f.r_raw), tape.clone()),
+            h_raw: Reverse::reversible(T::from_f64(f.h_raw), tape),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub struct GRUNetworkBase<T> {
     pub(crate) i_to_h_weights: Vec<Vec<GRUW<T>>>,
@@ -77,7 +107,16 @@ pub struct GRUStateBase<T> {
     storage2: Vec<T>,
 }
 
-impl<T: FromF64 + Clone> Vectorizable for GRUNetworkBase<T> {
+impl<
+        T: FromF64
+            + Clone
+            + std::ops::Mul<Output = T>
+            + std::ops::Add<Output = T>
+            + std::ops::Sub<Output = T>
+            + One
+            + Zero,
+    > Vectorizable for GRUNetworkBase<T>
+{
     type Context = Vec<usize>;
 
     fn to_vec(&self) -> (Vec<f64>, Self::Context) {
@@ -152,7 +191,77 @@ impl<T: FromF64 + Clone> Vectorizable for GRUNetworkBase<T> {
     }
 }
 
-impl<T: FromF64 + Clone> GRUNetworkBase<T> {
+impl<
+        T: FromF64
+            + Clone
+            + std::ops::Mul<Output = T>
+            + std::ops::Add<Output = T>
+            + std::ops::Sub<Output = T>
+            + One
+            + Zero,
+    > GRUNetworkBase<Reverse<T>>
+{
+    pub fn from_f64(net: &GRUNetwork, tape: Tape<T>) -> Self {
+        let i_to_h_weights = net
+            .i_to_h_weights
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .map(|w| GRUW::<Reverse<T>>::from_f64(*w, tape.clone()))
+                    .collect()
+            })
+            .collect();
+        let h_to_h_weights = net
+            .h_to_h_weights
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .map(|w| GRUW::<Reverse<T>>::from_f64(*w, tape.clone()))
+                    .collect()
+            })
+            .collect();
+        let biases = net
+            .biases
+            .iter()
+            .map(|v| {
+                v.iter()
+                    .map(|w| GRUW::<Reverse<T>>::from_f64(*w, tape.clone()))
+                    .collect()
+            })
+            .collect();
+        let output_weights = net
+            .output_weights
+            .iter()
+            .map(|w| Reverse::<T>::reversible(T::from_f64(*w), tape.clone()))
+            .collect();
+        let output_biases = net
+            .output_biases
+            .iter()
+            .map(|w| Reverse::<T>::reversible(T::from_f64(*w), tape.clone()))
+            .collect();
+
+        GRUNetworkBase {
+            i_to_h_weights,
+            h_to_h_weights,
+            biases,
+            output_weights,
+            output_biases,
+            layer_sizes: net.layer_sizes.clone(),
+            widest_layer: net.widest_layer,
+        }
+    }
+}
+
+impl<
+        T: FromF64
+            + Clone
+            + std::ops::Mul<Output = T>
+            + std::ops::Add<Output = T>
+            + std::ops::Sub<Output = T>
+            + One
+            + Zero,
+    > GRUNetworkBase<T>
+{
     pub fn new(layer_sizes: &[usize]) -> Self {
         if layer_sizes.len() < 2 {
             panic!("Must have at least 2 layers (for input and output)");
@@ -188,6 +297,63 @@ impl<T: FromF64 + Clone> GRUNetworkBase<T> {
             output_biases,
             layer_sizes: layer_sizes.to_vec(),
             widest_layer,
+        }
+    }
+
+    pub fn to_f64(&self) -> GRUNetwork {
+        let i_to_h_weights = self
+            .i_to_h_weights
+            .iter()
+            .map(|v| v.iter().map(|w| w.to_f64()).collect())
+            .collect();
+        let h_to_h_weights = self
+            .h_to_h_weights
+            .iter()
+            .map(|v| v.iter().map(|w| w.to_f64()).collect())
+            .collect();
+        let biases = self
+            .biases
+            .iter()
+            .map(|v| v.iter().map(|w| w.to_f64()).collect())
+            .collect();
+        let output_weights = self.output_weights.iter().map(|w| w.to_f64()).collect();
+        let output_biases = self.output_biases.iter().map(|w| w.to_f64()).collect();
+
+        GRUNetworkBase {
+            i_to_h_weights,
+            h_to_h_weights,
+            biases,
+            output_weights,
+            output_biases,
+            layer_sizes: self.layer_sizes.clone(),
+            widest_layer: self.widest_layer,
+        }
+    }
+
+    pub fn walk<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut T),
+    {
+        for w in self.i_to_h_weights.iter_mut() {
+            for gruw in w.iter_mut() {
+                gruw.walk(&mut callback);
+            }
+        }
+        for w in self.h_to_h_weights.iter_mut() {
+            for gruw in w.iter_mut() {
+                gruw.walk(&mut callback);
+            }
+        }
+        for b in self.biases.iter_mut() {
+            for gruw in b.iter_mut() {
+                gruw.walk(&mut callback);
+            }
+        }
+        for w in self.output_weights.iter_mut() {
+            callback(w);
+        }
+        for b in self.output_biases.iter_mut() {
+            callback(b);
         }
     }
 
@@ -231,7 +397,9 @@ impl<
             + Clone
             + std::ops::Mul<Output = T>
             + std::ops::Add<Output = T>
-            + std::ops::Sub<Output = T>,
+            + std::ops::Sub<Output = T>
+            + One
+            + Zero,
     > RNNState for GRUStateBase<T>
 {
     type InputType = T;
@@ -260,7 +428,9 @@ impl<
             + Clone
             + std::ops::Mul<Output = T>
             + std::ops::Add<Output = T>
-            + std::ops::Sub<Output = T>,
+            + std::ops::Sub<Output = T>
+            + One
+            + Zero,
     > GRUStateBase<T>
 {
     pub fn memories(&self) -> Vec<T> {

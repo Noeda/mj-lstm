@@ -402,7 +402,7 @@ dependencies = [
 [[package]]
 name = "mj-autograd"
 version = "0.1.0"
-source = "git+https://github.com/Noeda/mj-autograd?rev=896b28d97baa6763e08d4048132cdc18f490baa5#896b28d97baa6763e08d4048132cdc18f490baa5"
+source = "git+https://github.com/Noeda/mj-autograd?rev=50e25dc872550f794820906c36b50e732a06926e#50e25dc872550f794820906c36b50e732a06926e"
 dependencies = [
  "num",
 ]
@@ -414,6 +414,7 @@ dependencies = [
  "criterion",
  "crossbeam",
  "mj-autograd",
+ "num",
  "num_cpus",
  "quickcheck",
  "rand 0.7.3",
