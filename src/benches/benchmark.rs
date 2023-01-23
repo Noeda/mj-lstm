@@ -18,6 +18,21 @@ pub fn gru_benchmark(c: &mut Criterion) {
             st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
         })
     });
+
+    let gru = GRUNetworkF32::new(&[8, 100, 100, 8]);
+    c.bench_function("gru f32 8-100-100-8 propagate", |b| {
+        b.iter(|| {
+            let mut st = black_box(&gru).start();
+            st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+    let gru = GRUNetworkF32::new(&[5, 8, 4, 1]);
+    c.bench_function("gru f32 5-8-4-1 propagate", |b| {
+        b.iter(|| {
+            let mut st = black_box(&gru).start();
+            st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
 }
 
 pub fn lstm_benchmark(c: &mut Criterion) {
