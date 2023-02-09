@@ -64,6 +64,11 @@ pub fn fast_sigmoid(x: f64) -> f64 {
 }
 
 #[inline]
+pub fn fast_tanh(x: f64) -> f64 {
+    fast_sigmoid(x) * 2.0 - 1.0
+}
+
+#[inline]
 pub fn inv_fast_sigmoid(y: f64) -> f64 {
     // x positive?
     if y >= 0.5 {

@@ -13,6 +13,7 @@ pub mod simd_tests;
 pub mod gradient;
 pub mod gru;
 pub mod lstm;
+pub mod nematode;
 pub mod rnn;
 #[cfg(target_arch = "aarch64")]
 pub mod simd_aarch64;
