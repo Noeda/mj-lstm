@@ -91,6 +91,7 @@ impl SimpleNN {
         }
     }
 
+    #[inline]
     pub fn layer_size(&self, layer: usize) -> usize {
         if layer == 0 {
             return self.ninputs;
@@ -109,6 +110,9 @@ impl SimpleNN {
         mut storage1: &'a mut [f64],
         mut storage2: &'a mut [f64],
     ) {
+        if inputs.len() < self.ninputs {
+            panic!("Not enough inputs");
+        }
         if outputs.len() < self.noutputs {
             panic!("Output vector too small!");
         }
@@ -119,28 +123,81 @@ impl SimpleNN {
             panic!("Storage too small!");
         }
 
-        for idx in 0..inputs.len() {
-            storage1[idx] = inputs[idx];
-        }
-
-        for layer_idx in 0..self.weights.len() {
-            let layer_idx = layer_idx + 1;
-
-            for target_idx in 0..self.layer_size(layer_idx) {
-                let mut sum = self.biases[layer_idx - 1][target_idx];
-                for source_idx in 0..self.layer_size(layer_idx - 1) {
-                    sum += self.weights[layer_idx - 1]
-                        [source_idx + target_idx * self.layer_size(layer_idx - 1)]
-                        * storage1[source_idx];
-                }
-                storage2[target_idx] = fast_sigmoid(sum);
+        unsafe {
+            for idx in 0..inputs.len() {
+                *storage1.get_unchecked_mut(idx) = *inputs.get_unchecked(idx);
             }
-            std::mem::swap(&mut storage1, &mut storage2);
-        }
-        for idx in 0..outputs.len() {
-            outputs[idx] = storage1[idx];
+
+            for layer_idx in 0..self.weights.len() {
+                let layer_idx = layer_idx + 1;
+
+                for target_idx in 0..self.layer_size(layer_idx) {
+                    let mut sum = *self
+                        .biases
+                        .get_unchecked(layer_idx - 1)
+                        .get_unchecked(target_idx);
+                    for source_idx in 0..self.layer_size(layer_idx - 1) {
+                        sum += self.weights.get_unchecked(layer_idx - 1).get_unchecked(
+                            source_idx + target_idx * self.layer_size(layer_idx - 1),
+                        ) * *storage1.get_unchecked(source_idx);
+                    }
+                    if layer_idx != self.weights.len() - 1 {
+                        *storage2.get_unchecked_mut(target_idx) = fast_sigmoid(sum) * 2.0 - 1.0;
+                    } else {
+                        *storage2.get_unchecked_mut(target_idx) = fast_sigmoid(sum);
+                    }
+                }
+                std::mem::swap(&mut storage1, &mut storage2);
+            }
+            for idx in 0..outputs.len() {
+                *outputs.get_unchecked_mut(idx) = *storage1.get_unchecked(idx);
+            }
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct SimpleNNStorage {
+    nn: SimpleNN,
+    storage1: Vec<f64>,
+    storage2: Vec<f64>,
+    output: Vec<f64>,
+}
+
+// Simple feed-forward network has no recurring connections but we can still instance RNNState for
+// (state is just keeping storage buffers)
+impl RNN for SimpleNN {
+    type RNNState = SimpleNNStorage;
+
+    fn start(&self) -> Self::RNNState {
+        SimpleNNStorage {
+            nn: self.clone(),
+            storage1: vec![0.0; self.widest_layer],
+            storage2: vec![0.0; self.widest_layer],
+            output: vec![0.0; self.noutputs],
+        }
+    }
+}
+
+impl RNNState for SimpleNNStorage {
+    type InputType = f64;
+    type OutputType = f64;
+
+    fn propagate(&mut self, input: &[Self::InputType]) -> &[Self::OutputType] {
+        self.nn.propagate(
+            input,
+            &mut self.output,
+            &mut self.storage1,
+            &mut self.storage2,
+        );
+        &self.output
+    }
+
+    fn propagate32(&mut self, input: &[f32]) -> &[f32] {
+        unimplemented!();
+    }
+
+    fn reset(&mut self) {}
 }
 
 /// Simple RNN network.

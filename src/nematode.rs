@@ -58,6 +58,7 @@ pub struct Nematode {
     layers: Vec<NematodeLayer>,
 }
 
+#[derive(Clone, Debug)]
 pub struct NematodeState {
     layer_states: Vec<NematodeLayerState>,
 }
