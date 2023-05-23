@@ -193,7 +193,7 @@ impl RNNState for SimpleNNStorage {
         &self.output
     }
 
-    fn propagate32(&mut self, input: &[f32]) -> &[f32] {
+    fn propagate32(&mut self, _input: &[f32]) -> &[f32] {
         unimplemented!();
     }
 

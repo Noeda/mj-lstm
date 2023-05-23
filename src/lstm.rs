@@ -1,9 +1,5 @@
 use crate::gradient::*;
 use crate::rnn::{RNNState, RNN};
-#[cfg(target_arch = "aarch64")]
-use crate::simd_aarch64::*;
-#[cfg(target_arch = "x86_64")]
-use crate::simd_amd64::*;
 use crate::simd_common::*;
 use crate::unpackable::*;
 use mj_autograd::*;
@@ -1030,7 +1026,17 @@ impl LSTMStateBase<f32, F32x8> {
 impl LSTMStateBase<f64, F64x4> {
     #[inline]
     pub fn lstm_propagate<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
-        unsafe { self.lstm_propagate2(inputs) }
+        unsafe { self.lstm_propagate2(inputs, None, None) }
+    }
+
+    #[inline]
+    pub fn lstm_propagate_collect_activations<'b>(
+        &'b mut self,
+        inputs: &[f64],
+        nlayer: usize,
+        activations: &mut Vec<f64>,
+    ) -> &'b [f64] {
+        unsafe { self.lstm_propagate2(inputs, Some(nlayer), Some(activations)) }
     }
 
     pub fn smallest_largest_memory(&self) -> (f64, f64) {
@@ -1050,7 +1056,15 @@ impl LSTMStateBase<f64, F64x4> {
         (lowest.unwrap_or(0.0), highest.unwrap_or(0.0))
     }
 
-    unsafe fn lstm_propagate2<'b>(&'b mut self, inputs: &[f64]) -> &'b [f64] {
+    unsafe fn lstm_propagate2<'b>(
+        &'b mut self,
+        inputs: &[f64],
+        nlayer: Option<usize>,
+        mut activations: Option<&mut Vec<f64>>,
+    ) -> &'b [f64] {
+        if let Some(ref mut act) = activations {
+            act.truncate(0);
+        }
         if !self.network.initial_memories.is_empty() {
             assert_eq!(
                 inputs.len() * self.network.initial_memories[0].len(),
@@ -1103,6 +1117,14 @@ impl LSTMStateBase<f64, F64x4> {
                 let output_s = iiof_sigmoid.v3();
                 let output_v = (fast_sigmoid(new_memory) * 2.0 - 1.0) * output_s;
 
+                if let Some(nlayer_act) = nlayer {
+                    if let Some(ref mut act) = activations {
+                        if nlayer_act == i {
+                            act.push(output_v);
+                        }
+                    }
+                }
+
                 *outputs1.get_unchecked_mut(tgt_idx) = output_v;
                 *self
                     .memories
@@ -1133,6 +1155,14 @@ impl LSTMStateBase<f64, F64x4> {
                 *outputs1.get_unchecked_mut(tgt_idx) = fast_sigmoid(v);
             } else {
                 *outputs1.get_unchecked_mut(tgt_idx) = v;
+            }
+
+            if let Some(nlayer_act) = nlayer {
+                if let Some(ref mut act) = activations {
+                    if nlayer_act == self.network.weights.len() {
+                        act.push(*outputs1.get_unchecked(tgt_idx));
+                    }
+                }
             }
         }
         &outputs1[0..self.network.noutputs]

@@ -410,7 +410,7 @@ impl Vectorizable for NematodeLayer {
 
     fn from_vec(vec: &[f64], ctx: &Self::Context) -> Self {
         let mut vec: &[f64] = vec;
-        let original_len = vec.len();
+        let _original_len = vec.len();
         let nbackbone_layers = ctx.0;
         let nbackbone_units = ctx.1;
         let ninputs = ctx.2;

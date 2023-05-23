@@ -1,3 +1,7 @@
+#[cfg(target_arch = "aarch64")]
+pub use crate::simd_aarch64::*;
+#[cfg(target_arch = "x86_64")]
+pub use crate::simd_amd64::*;
 use mj_autograd::*;
 use serde::{Deserialize, Serialize};
 
