@@ -794,7 +794,7 @@ dependencies = [
 [[package]]
 name = "rcmaes"
 version = "0.1.0"
-source = "git+https://github.com/Noeda/rcmaes?rev=06ce27a82ce060702e6435010ffc5de4eea522f5#06ce27a82ce060702e6435010ffc5de4eea522f5"
+source = "git+https://github.com/Noeda/rcmaes?rev=a4151fd3ad2daa348a6449d74dc6c2dc5f122a22#a4151fd3ad2daa348a6449d74dc6c2dc5f122a22"
 dependencies = [
  "cc",
  "libc",

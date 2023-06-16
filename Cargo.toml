@@ -5,7 +5,7 @@ authors = ["Mikko Juola <mikjuo@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rcmaes = { git = "https://github.com/Noeda/rcmaes", rev = "06ce27a82ce060702e6435010ffc5de4eea522f5" }
+rcmaes = { git = "https://github.com/Noeda/rcmaes", rev = "a4151fd3ad2daa348a6449d74dc6c2dc5f122a22" }
 mj-autograd = { git = "https://github.com/Noeda/mj-autograd", rev = "50e25dc872550f794820906c36b50e732a06926e" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
