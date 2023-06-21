@@ -64,7 +64,7 @@ pub fn main() {
 fn demonstrate(model: &MetaNN) {
     let mut rng = thread_rng();
     for _ in 0..5 {
-        let mut lstm_state = MetaNNState::new(5, &[10, 10, 10, 10], 1, model.clone());
+        let mut lstm_state = MetaFF::new(5, &[6, 3], 1, model.clone());
 
         for _ in 0..50 {
             let mut input: Vec<f64> = vec![0.0; 5];
@@ -107,7 +107,7 @@ fn evaluate(model: &MetaNN, seed: u64) -> f64 {
     let mut score: f64 = 0.0;
     let mut train_epochs: usize = rng.gen_range(1, 50);
     for _ in 0..50 {
-        let mut lstm_state = MetaNNState::new(5, &[10, 10, 10, 10], 1, model.clone());
+        let mut lstm_state = MetaFF::new(5, &[6, 3], 1, model.clone());
         let mut prev_prediction: f64 = -100.0;
         for _ in 0..train_epochs {
             let mut input: Vec<f64> = vec![0.0; 5];

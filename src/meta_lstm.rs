@@ -16,13 +16,14 @@ use crate::simd_common::sigmoid;
 use rand::{thread_rng, Rng};
 use rcmaes::Vectorizable;
 
+// feed forward network using meta neural networks
 #[derive(Clone, Debug)]
-pub struct MetaNNState {
+pub struct MetaFF {
     meta: MetaNN,
     ninputs: usize,
     noutputs: usize,
     nhiddens: Vec<usize>,
-    meta_states: Vec<MetaLayerState>,
+    meta_states: Vec<MetaLayerState<MetaNN>>,
     message_matrix: MessageMatrix,
 }
 
@@ -120,6 +121,111 @@ impl MetaNN {
     }
 }
 
+pub trait MetaNNLike: Clone {
+    type State: Clone;
+
+    fn make_state(&self) -> Self::State;
+
+    fn propagate(
+        &self,
+        state: &Self::State,
+        tgt_state: &mut Self::State,
+        forward_msg: &Message,
+        backward_msg: &Message,
+    );
+
+    fn generate_forward_message<'a, F>(
+        &'a self,
+        get_state: F,
+        num_states: usize,
+        new_forward_msg: &mut Message,
+    ) where
+        F: FnMut(usize) -> &'a Self::State;
+
+    fn generate_backward_message<'a, F>(
+        &'a self,
+        get_state: F,
+        num_states: usize,
+        new_backward_msg: &mut Message,
+    ) where
+        F: FnMut(usize) -> &'a Self::State;
+}
+
+impl MetaNNLike for MetaNN {
+    type State = MetaNNState;
+
+    fn make_state(&self) -> Self::State {
+        MetaNNState::new(self.size())
+    }
+
+    fn propagate(
+        &self,
+        state: &Self::State,
+        tgt_state: &mut Self::State,
+        forward_msg: &Message,
+        backward_msg: &Message,
+    ) {
+        for j in 0..self.size() {
+            let mut accum: f64 = self.w_bias[j];
+            // self-connections
+            for i in 0..self.size() {
+                accum += state.last_activations[i] * (*self.w.at(i, j));
+            }
+            // (message weight matrices are computed when messages are generated, not here)
+            // forward messages
+            for i in 0..self.size() {
+                accum += forward_msg.msg[i];
+            }
+            // backward messages
+            for i in 0..self.size() {
+                accum += backward_msg.msg[i];
+            }
+            accum = sigmoid(accum);
+            tgt_state.last_activations[j] = accum;
+        }
+    }
+
+    fn generate_forward_message<'a, F>(
+        &'a self,
+        mut get_state: F,
+        num_states: usize,
+        new_forward_msg: &mut Message,
+    ) where
+        F: FnMut(usize) -> &'a Self::State,
+    {
+        for j in 0..self.size() {
+            let mut accum: f64 = self.forward_w_bias[j];
+            for a_idx in 0..num_states {
+                let state = get_state(a_idx);
+                for i in 0..self.size() {
+                    accum += (*self.forward_w.at(i, j)) * state.last_activations[i];
+                }
+            }
+            new_forward_msg.msg[j] = accum;
+        }
+    }
+
+    fn generate_backward_message<'a, F>(
+        &'a self,
+        mut get_state: F,
+        num_states: usize,
+        new_backward_msg: &mut Message,
+    ) where
+        F: FnMut(usize) -> &'a Self::State,
+    {
+        for j in 0..self.size() {
+            let mut accum: f64 = self.backward_w_bias[j];
+            for b_idx in 0..num_states {
+                let state = get_state(b_idx);
+                for i in 0..self.size() {
+                    accum += (*self.backward_w.at(i, j)) * state.last_activations[i];
+                }
+            }
+            new_backward_msg.msg[j] = accum;
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Vec2D<T> {
     nrows: usize,
@@ -155,6 +261,11 @@ impl<T: Clone> Vec2D<T> {
     }
 
     #[inline]
+    pub fn at_mut(&mut self, x: usize, y: usize) -> &mut T {
+        &mut self.items[x * self.ncols + y]
+    }
+
+    #[inline]
     pub fn set(&mut self, x: usize, y: usize, value: T) {
         self.items[x * self.ncols + y] = value;
     }
@@ -169,23 +280,23 @@ impl<T: Clone> Vec2D<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct MetaLayerState {
+pub struct MetaLayerState<NN: MetaNNLike> {
     // states, or weights in a neural network. A neurons on left side and B neurons on right side.
-    states: Vec2D<MetaNodeState>,     // AxB
-    tmp_states: Vec2D<MetaNodeState>, // AxB
+    states: Vec2D<NN::State>,     // AxB
+    tmp_states: Vec2D<NN::State>, // AxB
 }
 
-impl MetaLayerState {
-    pub fn new(meta: &MetaNN, a: usize, b: usize) -> Self {
+impl<NN: MetaNNLike> MetaLayerState<NN> {
+    pub fn new(meta: &NN, a: usize, b: usize) -> Self {
         Self {
-            states: Vec2D::replicate(MetaNodeState::new(meta.size()), a, b),
-            tmp_states: Vec2D::replicate(MetaNodeState::new(meta.size()), a, b),
+            states: Vec2D::replicate(meta.make_state(), a, b),
+            tmp_states: Vec2D::replicate(meta.make_state(), a, b),
         }
     }
 
     pub fn propagate(
         &mut self,
-        meta_nn: &MetaNN,
+        meta_nn: &NN,
         layer_idx: usize,
         message_matrix: &mut MessageMatrix,
     ) {
@@ -200,27 +311,12 @@ impl MetaLayerState {
 
         for a_idx in 0..self.states.rows() {
             for b_idx in 0..self.states.cols() {
-                for j in 0..meta_nn.size() {
-                    let mut accum: f64 = meta_nn.w_bias[j];
-                    // self-connections
-                    for i in 0..meta_nn.size() {
-                        accum += self.states.at(a_idx, b_idx).last_activations[i]
-                            * (*meta_nn.w.at(i, j));
-                    }
-                    // (message weight matrices are computed when messages are generated, not here)
-                    // forward messages
-                    for i in 0..meta_nn.size() {
-                        accum += forward_msg[a_idx].msg[i];
-                    }
-                    // backward messages
-                    for i in 0..meta_nn.size() {
-                        accum += backward_msg[b_idx].msg[i];
-                    }
-                    accum = sigmoid(accum);
-                    self.tmp_states.modify(a_idx, b_idx, |last_activations| {
-                        last_activations.last_activations[j] = accum;
-                    });
-                }
+                meta_nn.propagate(
+                    self.states.at(a_idx, b_idx),
+                    self.tmp_states.at_mut(a_idx, b_idx),
+                    &forward_msg[a_idx],
+                    &backward_msg[b_idx],
+                );
             }
         }
         std::mem::swap(&mut self.states, &mut self.tmp_states);
@@ -232,16 +328,11 @@ impl MetaLayerState {
         assert_eq!(new_forward_msg_len, self.states.cols());
 
         for b_idx in 0..self.states.cols() {
-            for j in 0..meta_nn.size() {
-                let mut accum: f64 = meta_nn.forward_w_bias[j];
-                for a_idx in 0..self.states.rows() {
-                    for i in 0..meta_nn.size() {
-                        accum += (*meta_nn.forward_w.at(i, j))
-                            * self.states.at(a_idx, b_idx).last_activations[i];
-                    }
-                }
-                new_forward_msg[b_idx].msg[j] = accum;
-            }
+            meta_nn.generate_forward_message(
+                |idx| self.states.at(idx, b_idx),
+                self.states.rows(),
+                &mut new_forward_msg[b_idx],
+            );
         }
 
         if layer_idx > 0 {
@@ -250,27 +341,22 @@ impl MetaLayerState {
             assert_eq!(new_backward_msg.len(), forward_msg_len);
 
             for a_idx in 0..new_backward_msg.len() {
-                for j in 0..meta_nn.size() {
-                    let mut accum: f64 = meta_nn.backward_w_bias[j];
-                    for b_idx in 0..self.states.cols() {
-                        for i in 0..meta_nn.size() {
-                            accum += (*meta_nn.backward_w.at(i, j))
-                                * self.states.at(a_idx, b_idx).last_activations[i];
-                        }
-                    }
-                    new_backward_msg[a_idx].msg[j] = accum;
-                }
+                meta_nn.generate_backward_message(
+                    |idx| self.states.at(a_idx, idx),
+                    self.states.cols(),
+                    &mut new_backward_msg[a_idx],
+                );
             }
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct MetaNodeState {
+pub struct MetaNNState {
     last_activations: Vec<f64>,
 }
 
-impl MetaNodeState {
+impl MetaNNState {
     pub fn new(sz: usize) -> Self {
         Self {
             last_activations: vec![0.0; sz],
@@ -333,7 +419,7 @@ impl Message {
     }
 }
 
-impl MetaNNState {
+impl MetaFF {
     pub fn new(ninputs: usize, nhiddens: &[usize], noutputs: usize, meta: MetaNN) -> Self {
         let mut message_matrix_sizes: Vec<usize> = Vec::with_capacity(2 + nhiddens.len());
         message_matrix_sizes.push(ninputs);
@@ -343,7 +429,7 @@ impl MetaNNState {
         message_matrix_sizes.push(noutputs);
         let message_matrix = MessageMatrix::new(&message_matrix_sizes, &meta);
 
-        let mut meta_states: Vec<MetaLayerState> = Vec::with_capacity(2 + nhiddens.len());
+        let mut meta_states: Vec<MetaLayerState<MetaNN>> = Vec::with_capacity(2 + nhiddens.len());
         for idx in 1..message_matrix_sizes.len() {
             let a = message_matrix_sizes[idx - 1];
             let b = message_matrix_sizes[idx];
