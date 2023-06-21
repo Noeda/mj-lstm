@@ -13,6 +13,7 @@ pub mod simd_tests;
 pub mod gradient;
 pub mod gru;
 pub mod lstm;
+pub mod meta_lstm;
 pub mod nematode;
 pub mod rnn;
 #[cfg(target_arch = "aarch64")]
@@ -26,5 +27,6 @@ pub mod unpackable;
 
 pub use crate::gru::*;
 pub use crate::lstm::*;
+pub use crate::meta_lstm::*;
 pub use crate::simple::*;
 pub use crate::stop_condition::*;

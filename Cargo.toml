@@ -13,6 +13,7 @@ rand = "0.7"
 rug = "1"
 statrs = "0.16"
 num = "0.4"
+rayon = "1.7"
 
 [dev-dependencies]
 quickcheck = "0.9"
@@ -24,6 +25,16 @@ num_cpus = "1"
 opt-level = 3
 overflow-checks = false
 lto = true
+
+[[bin]]
+name = "meta-lstm"
+path = "toys/meta_learning_experiment.rs"
+test = false
+bench = false
+required-features = ["toys"]
+
+[features]
+toys = []
 
 [[bench]]
 path = "src/benches/benchmark.rs"

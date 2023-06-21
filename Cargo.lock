@@ -394,6 +394,7 @@ dependencies = [
  "num_cpus",
  "quickcheck",
  "rand 0.7.3",
+ "rayon",
  "rcmaes",
  "rug",
  "serde",

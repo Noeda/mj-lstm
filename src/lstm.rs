@@ -1719,33 +1719,31 @@ impl LSTMNetwork {
     }
 
     pub fn zero(&mut self) {
-        unsafe {
-            for w in self.weights.iter_mut() {
-                for w2 in w.iter_mut() {
-                    w2.zero();
-                }
+        for w in self.weights.iter_mut() {
+            for w2 in w.iter_mut() {
+                w2.zero();
             }
-            for w in self.last_state_weights.iter_mut() {
-                for w2 in w.iter_mut() {
-                    w2.zero();
-                }
+        }
+        for w in self.last_state_weights.iter_mut() {
+            for w2 in w.iter_mut() {
+                w2.zero();
             }
-            for w in self.iiof_biases.iter_mut() {
-                for w2 in w.iter_mut() {
-                    w2.zero();
-                }
+        }
+        for w in self.iiof_biases.iter_mut() {
+            for w2 in w.iter_mut() {
+                w2.zero();
             }
-            for m in self.initial_memories.iter_mut() {
-                for m2 in m.iter_mut() {
-                    *m2 = 0.0;
-                }
+        }
+        for m in self.initial_memories.iter_mut() {
+            for m2 in m.iter_mut() {
+                *m2 = 0.0;
             }
-            for lb in self.output_layer_biases.iter_mut() {
-                *lb = 0.0;
-            }
-            for lw in self.output_layer_weights.iter_mut() {
-                *lw = 0.0;
-            }
+        }
+        for lb in self.output_layer_biases.iter_mut() {
+            *lb = 0.0;
+        }
+        for lw in self.output_layer_weights.iter_mut() {
+            *lw = 0.0;
         }
     }
 }
