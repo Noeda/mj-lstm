@@ -13,6 +13,7 @@ pub mod simd_tests;
 pub mod gradient;
 pub mod gru;
 pub mod lstm;
+pub mod lstm_v2;
 pub mod meta_lstm;
 pub mod nematode;
 pub mod rnn;

@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use mj_lstm::gru::*;
 use mj_lstm::lstm::*;
+use mj_lstm::lstm_v2::*;
 use mj_lstm::rnn::*;
 use mj_lstm::simple::*;
 
@@ -117,10 +118,29 @@ pub fn lstm_benchmark(c: &mut Criterion) {
     });
 }
 
+pub fn lstm_v2_benchmark(c: &mut Criterion) {
+    let lstm = LSTMv2::new(&[8, 100, 100, 8]);
+    c.bench_function("lstm_v2 f64 8-100-100-8 propagate", |b| {
+        let mut st = black_box(&lstm).start();
+        b.iter(|| {
+            st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+
+    let lstm = LSTMv2::new(&[5, 8, 4, 1]);
+    c.bench_function("lstm_v2 f64 5-8-4-1 propagate", |b| {
+        let mut st = black_box(&lstm).start();
+        b.iter(|| {
+            st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
+        })
+    });
+}
+
 criterion_group!(
     benches,
     feedforward_nn_benchmark,
     gru_benchmark,
-    lstm_benchmark
+    lstm_benchmark,
+    lstm_v2_benchmark,
 );
 criterion_main!(benches);

@@ -235,7 +235,7 @@ impl F32x8 {
 impl F64x4 {
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    pub(crate) unsafe fn new(x1: f64, x2: f64, x3: f64, x4: f64) -> Self {
+    pub(crate) fn new(x1: f64, x2: f64, x3: f64, x4: f64) -> Self {
         F64x4 {
             vec: Vec4_F64 {
                 v1: x1,
@@ -247,18 +247,22 @@ impl F64x4 {
     }
 
     #[inline]
-    pub(crate) unsafe fn mul_add_scalar(&mut self, other1: f64, other2: F64x4) {
-        let broadcast_other1: float64x2_t = vmovq_n_f64(other1);
-        self.val.0 = vfmaq_f64(self.val.0, other2.val.0, broadcast_other1);
-        self.val.1 = vfmaq_f64(self.val.1, other2.val.1, broadcast_other1);
+    pub(crate) fn mul_add_scalar(&mut self, other1: f64, other2: F64x4) {
+        unsafe {
+            let broadcast_other1: float64x2_t = vmovq_n_f64(other1);
+            self.val.0 = vfmaq_f64(self.val.0, other2.val.0, broadcast_other1);
+            self.val.1 = vfmaq_f64(self.val.1, other2.val.1, broadcast_other1);
+        }
     }
 
     #[inline]
-    pub(crate) unsafe fn mul_add_scalar2(&mut self, other1: f64, other2: f64, other3: F64x4) {
-        let broadcast_other1: float64x2_t = vmovq_n_f64(other1);
-        let broadcast_other2: float64x2_t = vmovq_n_f64(other2);
-        self.val.0 = vfmaq_f64(self.val.0, other3.val.0, broadcast_other1);
-        self.val.1 = vfmaq_f64(self.val.1, other3.val.1, broadcast_other2);
+    pub(crate) fn mul_add_scalar2(&mut self, other1: f64, other2: f64, other3: F64x4) {
+        unsafe {
+            let broadcast_other1: float64x2_t = vmovq_n_f64(other1);
+            let broadcast_other2: float64x2_t = vmovq_n_f64(other2);
+            self.val.0 = vfmaq_f64(self.val.0, other3.val.0, broadcast_other1);
+            self.val.1 = vfmaq_f64(self.val.1, other3.val.1, broadcast_other2);
+        }
     }
 
     #[inline]
@@ -270,32 +274,35 @@ impl F64x4 {
     }
 
     #[inline]
-    pub(crate) unsafe fn fast_sigmoid(&mut self) {
-        let half: float64x2_t = vmovq_n_f64(0.5);
-        let one: float64x2_t = vmovq_n_f64(1.0);
-        let negzero: float64x2_t = vmovq_n_f64(-0.0);
+    pub(crate) fn fast_sigmoid(&mut self) {
+        unsafe {
+            let half: float64x2_t = vmovq_n_f64(0.5);
+            let one: float64x2_t = vmovq_n_f64(1.0);
+            let negzero: float64x2_t = vmovq_n_f64(-0.0);
 
-        // Convert to integer (need for bitwise operations)
-        let negzero_i: uint64x2_t = std::mem::transmute(vmvnq_u32(std::mem::transmute(negzero)));
-        let val_i1: uint64x2_t = std::mem::transmute(self.val.0);
-        let val_i2: uint64x2_t = std::mem::transmute(self.val.1);
+            // Convert to integer (need for bitwise operations)
+            let negzero_i: uint64x2_t =
+                std::mem::transmute(vmvnq_u32(std::mem::transmute(negzero)));
+            let val_i1: uint64x2_t = std::mem::transmute(self.val.0);
+            let val_i2: uint64x2_t = std::mem::transmute(self.val.1);
 
-        let self_abs1: float64x2_t =
-            std::mem::transmute(vandq_u64(negzero_i, std::mem::transmute(val_i1)));
-        let self_abs2: float64x2_t =
-            std::mem::transmute(vandq_u64(negzero_i, std::mem::transmute(val_i2)));
+            let self_abs1: float64x2_t =
+                std::mem::transmute(vandq_u64(negzero_i, std::mem::transmute(val_i1)));
+            let self_abs2: float64x2_t =
+                std::mem::transmute(vandq_u64(negzero_i, std::mem::transmute(val_i2)));
 
-        let plus_one1 = vaddq_f64(one, self_abs1);
-        let plus_one2 = vaddq_f64(one, self_abs2);
+            let plus_one1 = vaddq_f64(one, self_abs1);
+            let plus_one2 = vaddq_f64(one, self_abs2);
 
-        let xdivided1 = vdivq_f64(self.val.0, plus_one1);
-        let xdivided2 = vdivq_f64(self.val.1, plus_one2);
+            let xdivided1 = vdivq_f64(self.val.0, plus_one1);
+            let xdivided2 = vdivq_f64(self.val.1, plus_one2);
 
-        let multiplied1 = vfmaq_f64(half, xdivided1, half);
-        let multiplied2 = vfmaq_f64(half, xdivided2, half);
+            let multiplied1 = vfmaq_f64(half, xdivided1, half);
+            let multiplied2 = vfmaq_f64(half, xdivided2, half);
 
-        self.val.0 = multiplied1;
-        self.val.1 = multiplied2;
+            self.val.0 = multiplied1;
+            self.val.1 = multiplied2;
+        }
     }
 
     pub(crate) fn v1_vec(s: &[Self]) -> Vec<f64> {
@@ -337,7 +344,7 @@ impl F64x4 {
 
         let mut result = Vec::with_capacity(x1.len());
         for idx in 0..x1.len() {
-            result.push(unsafe { F64x4::new(x1[idx], x2[idx], x3[idx], x4[idx]) });
+            result.push(F64x4::new(x1[idx], x2[idx], x3[idx], x4[idx]));
         }
 
         result

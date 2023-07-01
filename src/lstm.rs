@@ -1543,7 +1543,7 @@ impl From<&LSTMNetworkF32> for LSTMNetwork {
         let mut weights: Vec<Vec<F64x4>> = Vec::with_capacity(nlayers - 2);
         for i in 0..nlayers - 2 {
             let desired_sz = layer_size(i) * layer_size(i + 1);
-            let mut w_vec = unsafe { vec![F64x4::new(0.0, 0.0, 0.0, 0.0); desired_sz] };
+            let mut w_vec = vec![F64x4::new(0.0, 0.0, 0.0, 0.0); desired_sz];
             for tgt_idx in 0..layer_size(i + 1) {
                 for src_idx in 0..layer_size(i) {
                     let src_wgt = unsafe { other.weight_items(i, src_idx, tgt_idx) };
@@ -1870,95 +1870,93 @@ impl LSTMNetworkBase<Reverse<f64>, GradientRecordF64> {
     }
 
     pub fn to_f64(&self) -> LSTMNetwork {
-        unsafe {
-            let ninputs = self.ninputs;
-            let noutputs = self.noutputs;
-            let output_is_sigmoid = self.output_is_sigmoid;
-            let no_output_bias = self.no_output_bias;
-            let widest_layer_size = self.widest_layer_size;
+        let ninputs = self.ninputs;
+        let noutputs = self.noutputs;
+        let output_is_sigmoid = self.output_is_sigmoid;
+        let no_output_bias = self.no_output_bias;
+        let widest_layer_size = self.widest_layer_size;
 
-            let weights = self
-                .weights
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .map(|x| {
-                            F64x4::new(
-                                *x.v1().value(),
-                                *x.v2().value(),
-                                *x.v3().value(),
-                                *x.v4().value(),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
+        let weights = self
+            .weights
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| {
+                        F64x4::new(
+                            *x.v1().value(),
+                            *x.v2().value(),
+                            *x.v3().value(),
+                            *x.v4().value(),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
 
-            let last_state_weights = self
-                .last_state_weights
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .map(|x| {
-                            F64x4::new(
-                                *x.v1().value(),
-                                *x.v2().value(),
-                                *x.v3().value(),
-                                *x.v4().value(),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
+        let last_state_weights = self
+            .last_state_weights
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| {
+                        F64x4::new(
+                            *x.v1().value(),
+                            *x.v2().value(),
+                            *x.v3().value(),
+                            *x.v4().value(),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
 
-            let iiof_biases = self
-                .iiof_biases
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .map(|x| {
-                            F64x4::new(
-                                *x.v1().value(),
-                                *x.v2().value(),
-                                *x.v3().value(),
-                                *x.v4().value(),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
+        let iiof_biases = self
+            .iiof_biases
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| {
+                        F64x4::new(
+                            *x.v1().value(),
+                            *x.v2().value(),
+                            *x.v3().value(),
+                            *x.v4().value(),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
 
-            let initial_memories = self
-                .initial_memories
-                .iter()
-                .map(|x| x.iter().map(|x| *x.value()).collect())
-                .collect();
+        let initial_memories = self
+            .initial_memories
+            .iter()
+            .map(|x| x.iter().map(|x| *x.value()).collect())
+            .collect();
 
-            let output_layer_biases = self
-                .output_layer_biases
-                .iter()
-                .map(|x| *x.value())
-                .collect();
+        let output_layer_biases = self
+            .output_layer_biases
+            .iter()
+            .map(|x| *x.value())
+            .collect();
 
-            let output_layer_weights = self
-                .output_layer_weights
-                .iter()
-                .map(|x| *x.value())
-                .collect();
+        let output_layer_weights = self
+            .output_layer_weights
+            .iter()
+            .map(|x| *x.value())
+            .collect();
 
-            LSTMNetworkBase {
-                weights,
-                last_state_weights,
-                iiof_biases,
-                initial_memories,
-                output_layer_biases,
-                output_layer_weights,
-                ninputs,
-                noutputs,
-                output_is_sigmoid,
-                no_output_bias,
-                widest_layer_size,
-            }
+        LSTMNetworkBase {
+            weights,
+            last_state_weights,
+            iiof_biases,
+            initial_memories,
+            output_layer_biases,
+            output_layer_weights,
+            ninputs,
+            noutputs,
+            output_is_sigmoid,
+            no_output_bias,
+            widest_layer_size,
         }
     }
 
@@ -2099,95 +2097,93 @@ impl LSTMNetworkBase<Reverse<f32>, GradientRecordF32> {
     }
 
     pub fn to_f64(&self) -> LSTMNetwork {
-        unsafe {
-            let ninputs = self.ninputs;
-            let noutputs = self.noutputs;
-            let output_is_sigmoid = self.output_is_sigmoid;
-            let no_output_bias = self.no_output_bias;
-            let widest_layer_size = self.widest_layer_size;
+        let ninputs = self.ninputs;
+        let noutputs = self.noutputs;
+        let output_is_sigmoid = self.output_is_sigmoid;
+        let no_output_bias = self.no_output_bias;
+        let widest_layer_size = self.widest_layer_size;
 
-            let weights = self
-                .weights
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .map(|x| {
-                            F64x4::new(
-                                *x.v1().value() as f64,
-                                *x.v2().value() as f64,
-                                *x.v3().value() as f64,
-                                *x.v4().value() as f64,
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
+        let weights = self
+            .weights
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| {
+                        F64x4::new(
+                            *x.v1().value() as f64,
+                            *x.v2().value() as f64,
+                            *x.v3().value() as f64,
+                            *x.v4().value() as f64,
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
 
-            let last_state_weights = self
-                .last_state_weights
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .map(|x| {
-                            F64x4::new(
-                                *x.v1().value() as f64,
-                                *x.v2().value() as f64,
-                                *x.v3().value() as f64,
-                                *x.v4().value() as f64,
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
+        let last_state_weights = self
+            .last_state_weights
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| {
+                        F64x4::new(
+                            *x.v1().value() as f64,
+                            *x.v2().value() as f64,
+                            *x.v3().value() as f64,
+                            *x.v4().value() as f64,
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
 
-            let iiof_biases = self
-                .iiof_biases
-                .iter()
-                .map(|x| {
-                    x.iter()
-                        .map(|x| {
-                            F64x4::new(
-                                *x.v1().value() as f64,
-                                *x.v2().value() as f64,
-                                *x.v3().value() as f64,
-                                *x.v4().value() as f64,
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
+        let iiof_biases = self
+            .iiof_biases
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|x| {
+                        F64x4::new(
+                            *x.v1().value() as f64,
+                            *x.v2().value() as f64,
+                            *x.v3().value() as f64,
+                            *x.v4().value() as f64,
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
 
-            let initial_memories = self
-                .initial_memories
-                .iter()
-                .map(|x| x.iter().map(|x| *x.value() as f64).collect())
-                .collect();
+        let initial_memories = self
+            .initial_memories
+            .iter()
+            .map(|x| x.iter().map(|x| *x.value() as f64).collect())
+            .collect();
 
-            let output_layer_biases = self
-                .output_layer_biases
-                .iter()
-                .map(|x| *x.value() as f64)
-                .collect();
+        let output_layer_biases = self
+            .output_layer_biases
+            .iter()
+            .map(|x| *x.value() as f64)
+            .collect();
 
-            let output_layer_weights = self
-                .output_layer_weights
-                .iter()
-                .map(|x| *x.value() as f64)
-                .collect();
+        let output_layer_weights = self
+            .output_layer_weights
+            .iter()
+            .map(|x| *x.value() as f64)
+            .collect();
 
-            LSTMNetworkBase {
-                weights,
-                last_state_weights,
-                iiof_biases,
-                initial_memories,
-                output_layer_biases,
-                output_layer_weights,
-                ninputs,
-                noutputs,
-                output_is_sigmoid,
-                no_output_bias,
-                widest_layer_size,
-            }
+        LSTMNetworkBase {
+            weights,
+            last_state_weights,
+            iiof_biases,
+            initial_memories,
+            output_layer_biases,
+            output_layer_weights,
+            ninputs,
+            noutputs,
+            output_is_sigmoid,
+            no_output_bias,
+            widest_layer_size,
         }
     }
 

@@ -48,7 +48,7 @@ impl Unpackable for F64x4 {
             let x3 = v.get(i * 4 + 2).unwrap_or(&0.0);
             let x4 = v.get(i * 4 + 3).unwrap_or(&0.0);
 
-            result.push(unsafe { F64x4::new(*x1, *x2, *x3, *x4) });
+            result.push(F64x4::new(*x1, *x2, *x3, *x4));
         }
         result
     }
