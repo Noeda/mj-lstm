@@ -228,6 +228,25 @@ impl F64x4 {
     }
 
     #[inline]
+    pub(crate) fn broadcast(x1: f64) -> Self {
+        unsafe { Self::broadcast_shadow(x1) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn broadcast_shadow(x1: f64) -> Self {
+        F64x4 {
+            vec: Vec4_F64 {
+                v1: x1,
+                v2: x1,
+                v3: x1,
+                v4: x1,
+            },
+        }
+    }
+
+    #[inline]
     pub(crate) fn fast_sigmoid(&mut self) {
         unsafe { self.fast_sigmoid_shadow() }
     }
@@ -256,6 +275,101 @@ impl F64x4 {
     #[target_feature(enable = "avx2")]
     unsafe fn zero_shadow(&mut self) {
         self.val = _mm256_setzero_pd();
+    }
+
+    #[inline]
+    pub(crate) fn sub(&mut self, other: F64x4) {
+        unsafe { self.sub_shadow(other) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn sub_shadow(&mut self, other: F64x4) {
+        self.val = _mm256_sub_pd(self.val, other.val);
+    }
+
+    #[inline]
+    pub(crate) fn sqrt(&mut self) {
+        unsafe { self.sqrt_shadow() }
+    }
+
+    #[inline]
+    unsafe fn sqrt_shadow(&mut self) {
+        self.val = _mm256_sqrt_pd(self.val);
+    }
+
+    #[inline]
+    pub(crate) fn add(&mut self, other: F64x4) {
+        unsafe { self.add_shadow(other) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn add_shadow(&mut self, other: F64x4) {
+        self.val = _mm256_add_pd(other.val, self.val);
+    }
+
+    #[inline]
+    pub(crate) fn add_scalar(&mut self, scalar: f64) {
+        unsafe { self.add_scalar_shadow(scalar) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn add_scalar_shadow(&mut self, scalar: f64) {
+        let scalar = _mm256_broadcast_sd(&scalar);
+        self.val = _mm256_add_pd(scalar, self.val);
+    }
+
+    #[inline]
+    pub(crate) fn div(&mut self, other: F64x4) {
+        unsafe { self.div_shadow(other) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn div_shadow(&mut self, other: F64x4) {
+        self.val = _mm256_div_pd(self.val, other.val);
+    }
+
+    #[inline]
+    pub(crate) fn div_scalar(&mut self, scalar: f64) {
+        unsafe { self.div_scalar_shadow(scalar) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn div_scalar_shadow(&mut self, scalar: f64) {
+        let scalar = _mm256_broadcast_sd(&scalar);
+        self.val = _mm256_div_pd(self.val, scalar);
+    }
+
+    #[inline]
+    pub(crate) fn mul_add(&mut self, other1: F64x4, other: F64x4) {
+        unsafe { self.mul_add_shadow(other1, other) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn mul_add_shadow(&mut self, other1: F64x4, other2: F64x4) {
+        self.val = _mm256_fmadd_pd(other1.val, other2.val, self.val);
+    }
+
+    pub(crate) fn mul(&mut self, other1: F64x4) {
+        unsafe { self.mul_shadow(other1) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn mul_shadow(&mut self, other1: F64x4) {
+        self.val = _mm256_mul_pd(other1.val, self.val);
     }
 
     #[inline]

@@ -127,6 +127,14 @@ impl F32x8 {
     }
 
     #[inline]
+    pub(crate) fn add(&mut self, other: F32x8) {
+        unsafe {
+            self.val.0 = vaddq_f32(self.val.0, other.val.0);
+            self.val.1 = vaddq_f32(self.val.1, other.val.1);
+        }
+    }
+
+    #[inline]
     pub(crate) unsafe fn mul_add_scalar(&mut self, other1: f32, other2: F32x8) {
         let broadcast_other1: float32x4_t = vmovq_n_f32(other1);
         self.val.0 = vfmaq_f32(self.val.0, other2.val.0, broadcast_other1);
@@ -243,6 +251,74 @@ impl F64x4 {
                 v3: x3,
                 v4: x4,
             },
+        }
+    }
+
+    #[inline]
+    pub(crate) fn broadcast(x: f64) -> Self {
+        unsafe {
+            let broadcast: float64x2_t = vmovq_n_f64(x);
+            F64x4 {
+                val: (broadcast, broadcast),
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn add(&mut self, other: F64x4) {
+        unsafe {
+            self.val.0 = vaddq_f64(self.val.0, other.val.0);
+            self.val.1 = vaddq_f64(self.val.1, other.val.1);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn sub(&mut self, other: F64x4) {
+        unsafe {
+            self.val.0 = vsubq_f64(self.val.0, other.val.0);
+            self.val.1 = vsubq_f64(self.val.1, other.val.1);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn mul(&mut self, other: F64x4) {
+        unsafe {
+            self.val.0 = vmulq_f64(self.val.0, other.val.0);
+            self.val.1 = vmulq_f64(self.val.1, other.val.1);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn add_scalar(&mut self, other: f64) {
+        unsafe {
+            let broadcast_other: float64x2_t = vmovq_n_f64(other);
+            self.val.0 = vaddq_f64(self.val.0, broadcast_other);
+            self.val.1 = vaddq_f64(self.val.1, broadcast_other);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn sqrt(&mut self) {
+        unsafe {
+            self.val.0 = vsqrtq_f64(self.val.0);
+            self.val.1 = vsqrtq_f64(self.val.1);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn div_scalar(&mut self, other: f64) {
+        unsafe {
+            let broadcast_other: float64x2_t = vmovq_n_f64(other);
+            self.val.0 = vdivq_f64(self.val.0, broadcast_other);
+            self.val.1 = vdivq_f64(self.val.1, broadcast_other);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn div(&mut self, other: F64x4) {
+        unsafe {
+            self.val.0 = vdivq_f64(self.val.0, other.val.0);
+            self.val.1 = vdivq_f64(self.val.1, other.val.1);
         }
     }
 

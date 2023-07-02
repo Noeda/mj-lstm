@@ -51,6 +51,11 @@ pub fn fast_sigmoid_derivative(x: f64) -> f64 {
 }
 
 #[inline]
+pub fn fast_tanh_derivative(x: f64) -> f64 {
+    fast_sigmoid_derivative(x) * 2.0
+}
+
+#[inline]
 pub fn fast_sigmoid_reverse(x: Reverse<f64>) -> Reverse<f64> {
     let x_abs = x.abs();
     Reverse::auto(0.5) + (x / (Reverse::auto(1.0) + x_abs)) * Reverse::auto(0.5)
@@ -80,6 +85,11 @@ pub fn inv_fast_sigmoid(y: f64) -> f64 {
     } else {
         1.0 / (1.0 / (2.0 * (y - 0.5)) + 1.0)
     }
+}
+
+#[inline]
+pub fn inv_fast_tanh(y: f64) -> f64 {
+    inv_fast_sigmoid((y + 1.0) / 2.0)
 }
 
 #[inline]
