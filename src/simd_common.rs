@@ -42,6 +42,12 @@ pub fn sigmoid(x: f64) -> f64 {
 }
 
 #[inline]
+pub fn sigmoid_derivative(x: f64) -> f64 {
+    let s = sigmoid(x);
+    s * (1.0 - s)
+}
+
+#[inline]
 pub fn fast_sigmoid_derivative(x: f64) -> f64 {
     if x >= 0.0 {
         0.5 / (x + 1.0).powi(2)
@@ -109,6 +115,28 @@ pub fn inv_sigmoid(x: f64) -> f64 {
 }
 
 #[inline]
+pub fn tanh(x: f64) -> f64 {
+    x.tanh()
+}
+
+#[inline]
+pub fn inv_tanh(x: f64) -> f64 {
+    if x <= -1.0 {
+        return -100_000.0;
+    }
+    if x >= 1.0 {
+        return 100_000.0;
+    }
+    0.5 * (1.0 + x) / (1.0 - x).ln()
+}
+
+#[inline]
+pub fn tanh_derivative(x: f64) -> f64 {
+    let t = tanh(x);
+    1.0 - t * t
+}
+
+#[inline]
 pub fn softmax(vec: &mut [f64]) {
     if vec.len() == 0 {
         return;
@@ -129,5 +157,22 @@ pub fn softmax(vec: &mut [f64]) {
 
     for idx in 0..vec.len() {
         vec[idx] = vec[idx] / denominator;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::{thread_rng, Rng};
+
+    #[test]
+    fn tanh_and_inv_tanh() {
+        let mut rng = thread_rng();
+        for _ in 0..1000 {
+            let x = rng.gen_range(-10.0, 10.0);
+            let y = tanh(x);
+            let x2 = inv_tanh(y);
+            assert!((x - x2).abs() < 1e-6);
+        }
     }
 }

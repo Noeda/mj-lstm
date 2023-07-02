@@ -381,6 +381,16 @@ impl F64x4 {
         }
     }
 
+    #[inline]
+    pub(crate) fn sigmoid(&mut self) {
+        unsafe {
+            self.vec.v1 = sigmoid(self.vec.v1);
+            self.vec.v2 = sigmoid(self.vec.v2);
+            self.vec.v3 = sigmoid(self.vec.v3);
+            self.vec.v4 = sigmoid(self.vec.v4);
+        }
+    }
+
     pub(crate) fn v1_vec(s: &[Self]) -> Vec<f64> {
         let mut result = Vec::with_capacity(s.len());
         for idx in 0..s.len() {
