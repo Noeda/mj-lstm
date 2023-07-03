@@ -247,6 +247,46 @@ impl F64x4 {
     }
 
     #[inline]
+    pub(crate) fn nans_to_zero(&mut self) {
+        unsafe { self.nans_to_zero_shadow() }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn nans_to_zero_shadow(&mut self) {
+        let zero = _mm256_setzero_pd();
+        let nan = _mm256_cmp_pd(self.val, self.val, _CMP_UNORD_Q);
+        self.val = _mm256_blendv_pd(zero, self.val, nan);
+    }
+
+    #[inline]
+    pub(crate) fn max_scalar(&mut self, scalar: f64, other: F64x4) {
+        unsafe { self.max_scalar_shadow(scalar, other) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn max_scalar_shadow(&mut self, scalar: f64, other: F64x4) {
+        let broadcast_scalar = _mm256_broadcast_sd(&scalar);
+        self.val = _mm256_max_pd(broadcast_scalar, other.val);
+    }
+
+    #[inline]
+    pub(crate) fn min_scalar(&mut self, scalar: f64, other: F64x4) {
+        unsafe { self.min_scalar_shadow(scalar, other) }
+    }
+
+    #[inline]
+    #[target_feature(enable = "avx")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn min_scalar_shadow(&mut self, scalar: f64, other: F64x4) {
+        let broadcast_scalar = _mm256_broadcast_sd(&scalar);
+        self.val = _mm256_min_pd(broadcast_scalar, other.val);
+    }
+
+    #[inline]
     pub(crate) fn fast_sigmoid(&mut self) {
         unsafe { self.fast_sigmoid_shadow() }
     }

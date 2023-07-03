@@ -135,6 +135,22 @@ impl F32x8 {
     }
 
     #[inline]
+    pub(crate) fn min_scalar(&mut self, scalar: f32, other: &F32x8) {
+        unsafe {
+            self.val.0 = vminq_f32(other.val.0, vmovq_n_f32(scalar));
+            self.val.1 = vminq_f32(other.val.1, vmovq_n_f32(scalar));
+        }
+    }
+
+    #[inline]
+    pub(crate) fn max_scalar(&mut self, scalar: f32, other: &F32x8) {
+        unsafe {
+            self.val.0 = vmaxq_f32(other.val.0, vmovq_n_f32(scalar));
+            self.val.1 = vmaxq_f32(other.val.1, vmovq_n_f32(scalar));
+        }
+    }
+
+    #[inline]
     pub(crate) unsafe fn mul_add_scalar(&mut self, other1: f32, other2: F32x8) {
         let broadcast_other1: float32x4_t = vmovq_n_f32(other1);
         self.val.0 = vfmaq_f32(self.val.0, other2.val.0, broadcast_other1);
@@ -285,6 +301,24 @@ impl F64x4 {
         unsafe {
             self.val.0 = vmulq_f64(self.val.0, other.val.0);
             self.val.1 = vmulq_f64(self.val.1, other.val.1);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn min_scalar(&mut self, scalar: f64, other: F64x4) {
+        unsafe {
+            let broadcast_scalar: float64x2_t = vmovq_n_f64(scalar);
+            self.val.0 = vminq_f64(other.val.0, broadcast_scalar);
+            self.val.1 = vminq_f64(other.val.1, broadcast_scalar);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn max_scalar(&mut self, scalar: f64, other: F64x4) {
+        unsafe {
+            let broadcast_scalar: float64x2_t = vmovq_n_f64(scalar);
+            self.val.0 = vmaxq_f64(other.val.0, broadcast_scalar);
+            self.val.1 = vmaxq_f64(other.val.1, broadcast_scalar);
         }
     }
 

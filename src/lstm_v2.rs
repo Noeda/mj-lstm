@@ -94,6 +94,11 @@ pub struct LSTMv2State {
     backprop_steps: Vec<RefCell<BackpropStep>>,
 }
 
+// RefCell is technically not thread-safe, but all methods for LSTMv2State take a &mut so multiple
+// thread access is prevented that way.
+unsafe impl Send for LSTMv2State {}
+unsafe impl Sync for LSTMv2State {}
+
 #[derive(Clone, Debug)]
 pub struct AdamWState {
     config: AdamWConfiguration,
@@ -111,6 +116,7 @@ pub struct AdamWConfiguration {
     epsilon: f64,
     learning_rate: f64,
     weight_decay: f64,
+    gradient_clip: f64,
 }
 
 impl AdamWConfiguration {
@@ -121,6 +127,14 @@ impl AdamWConfiguration {
             epsilon: 1e-8,
             learning_rate: 0.001,
             weight_decay: 0.0,
+            gradient_clip: std::f64::INFINITY,
+        }
+    }
+
+    pub fn gradient_clip(self, gradient_clip: f64) -> Self {
+        Self {
+            gradient_clip,
+            ..self
         }
     }
 }
@@ -295,10 +309,10 @@ impl LSTMv2 {
         let mut rng = thread_rng();
         for p in &mut self.parameters {
             *p = F64x4::new(
-                rng.gen_range(-1.0, 1.0),
-                rng.gen_range(-1.0, 1.0),
-                rng.gen_range(-1.0, 1.0),
-                rng.gen_range(-1.0, 1.0),
+                rng.gen_range(-0.5, 0.5),
+                rng.gen_range(-0.5, 0.5),
+                rng.gen_range(-0.5, 0.5),
+                rng.gen_range(-0.5, 0.5),
             );
         }
     }
@@ -369,11 +383,14 @@ impl LSTMv2 {
             adjustment.mul(adamw.bias_correction1[p]);
             let mut sqrt_bias_correction2 = adamw.bias_correction2[p];
             sqrt_bias_correction2.sqrt();
+            sqrt_bias_correction2.add_scalar(adamw.config.epsilon);
             adjustment.div(sqrt_bias_correction2);
-            adjustment.add_scalar(adamw.config.epsilon);
 
             let mut decay = F64x4::broadcast(adamw.config.weight_decay);
             decay.mul(self.parameters[p]);
+
+            adjustment.min_scalar(adamw.config.gradient_clip, adjustment);
+            adjustment.max_scalar(-adamw.config.gradient_clip, adjustment);
 
             // parameter = parameter - adjustment - weight_decay * parameter
             self.parameters[p].sub(adjustment);
