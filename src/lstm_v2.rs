@@ -22,7 +22,7 @@
 //   * Biases on each LSTM layer and output layer
 //
 // 2023-07-02: First version where gradient calculation does not seem obviously off, verified with
-// Haskell. Not sure everything contineus to be good if we try more complicated scenarios.
+// Haskell. Not sure everything continues to be good if we try more complicated scenarios.
 
 use crate::rnn::{RNNState, RNN};
 use crate::simd_common::{
@@ -104,8 +104,6 @@ pub struct AdamWState {
     config: AdamWConfiguration,
     first_moment: Vec<F64x4>,
     second_moment: Vec<F64x4>,
-    bias_correction1: Vec<F64x4>,
-    bias_correction2: Vec<F64x4>,
     iteration: i64,
 }
 
@@ -153,8 +151,6 @@ impl AdamWState {
             config,
             first_moment: vec![F64x4::new(0.0, 0.0, 0.0, 0.0); nparameters],
             second_moment: vec![F64x4::new(0.0, 0.0, 0.0, 0.0); nparameters],
-            bias_correction1: vec![F64x4::new(0.0, 0.0, 0.0, 0.0); nparameters],
-            bias_correction2: vec![F64x4::new(0.0, 0.0, 0.0, 0.0); nparameters],
             iteration: 1,
         }
     }
@@ -370,25 +366,25 @@ impl LSTMv2 {
 
             // bias_correction1 = first_moment / (1 - beta1^t)
             let beta1_t = 1.0 - beta1.powi(iteration);
-            adamw.bias_correction1[p] = adamw.first_moment[p];
-            adamw.bias_correction1[p].div_scalar(beta1_t);
+            let mut bias_correction1 = adamw.first_moment[p];
+            bias_correction1.div_scalar(beta1_t);
 
             // bias_correction2 = second_moment / (1 - beta2^t)
             let beta2_t = 1.0 - beta2.powi(iteration);
-            adamw.bias_correction2[p] = adamw.second_moment[p];
-            adamw.bias_correction2[p].div_scalar(beta2_t);
+            let mut bias_correction2 = adamw.second_moment[p];
+            bias_correction2.div_scalar(beta2_t);
 
             // adjustment = learning_rate * bias_correction1 / (sqrt(bias_correction2) + epsilon)
             let mut adjustment = F64x4::broadcast(learning_rate);
-            adjustment.mul(adamw.bias_correction1[p]);
-            let mut sqrt_bias_correction2 = adamw.bias_correction2[p];
-            sqrt_bias_correction2.sqrt();
-            sqrt_bias_correction2.add_scalar(adamw.config.epsilon);
-            adjustment.div(sqrt_bias_correction2);
+            adjustment.mul(bias_correction1);
+            bias_correction2.sqrt();
+            bias_correction2.add_scalar(adamw.config.epsilon);
+            adjustment.div(bias_correction2);
 
             let mut decay = F64x4::broadcast(adamw.config.weight_decay);
             decay.mul(self.parameters[p]);
 
+            // gradient clip
             adjustment.min_scalar(adamw.config.gradient_clip, adjustment);
             adjustment.max_scalar(-adamw.config.gradient_clip, adjustment);
 
@@ -661,7 +657,6 @@ impl LSTMv2State {
     /// Also, backpropagation state is not cleared so if you call this again, the same gradients
     /// are accumulated again. Use reset_backpropagation() if you want to clear the state.
     pub fn backpropagate(&mut self, nn: &LSTMv2, grad: &mut LSTMv2) {
-        // TODO: check that any collected info exists.
         let mut full_state_offset: usize = 0;
         for layer_idx in 1..nn.layer_sizes.len() - 1 {
             full_state_offset += nn.layer_sizes[layer_idx];
