@@ -134,6 +134,23 @@ pub fn lstm_v2_benchmark(c: &mut Criterion) {
             st.propagate(black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]));
         })
     });
+
+    let lstm = LSTMv2::new(&[5, 8, 4, 1]);
+    let mut grad = lstm.zero_like();
+    c.bench_function(
+        "lstm_v2 f64 5-8-4-1 propagate of 10 steps, with backpropagation step ",
+        |b| {
+            let mut st = black_box(&lstm).start_v2();
+            let mut outs: Vec<f64> = vec![0.0; 1];
+            b.iter(|| {
+                st.reset_backpropagation();
+                for _ in 0..10 {
+                    st.propagate_v2(&lstm, black_box(&[0.0, 0.0, 0.0, 0.0, 0.0]), &mut outs);
+                }
+                st.backpropagate(&lstm, &mut grad);
+            })
+        },
+    );
 }
 
 criterion_group!(

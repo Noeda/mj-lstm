@@ -810,42 +810,81 @@ impl LSTMv2State {
 
                         let g_wgts: &mut [F64x4] = grad.layer_to_layer_parameters_mut(layer_idx);
                         let wgts: &[F64x4] = &nn.layer_to_layer_parameters(layer_idx);
-                        for source_idx in 0..prev_layer_size {
-                            g_wgts[source_idx + target_idx * prev_layer_size]
-                                .mul_add_scalar(prev_activations[source_idx], deriv);
-                            let add_deriv = deriv_input
-                                * wgts[source_idx + target_idx * prev_layer_size].v1()
-                                + deriv_input_gate
-                                    * wgts[source_idx + target_idx * prev_layer_size].v2()
-                                + deriv_output_gate
-                                    * wgts[source_idx + target_idx * prev_layer_size].v3()
-                                + deriv_forget_gate
-                                    * wgts[source_idx + target_idx * prev_layer_size].v4();
-                            if let Some(ref mut lld) = lower_layer_derivs {
-                                lld[source_idx] += add_deriv;
-                            }
-                        }
-                        // self connections
-                        let g_self_wgts: &mut [F64x4] =
-                            grad.layer_to_self_parameters_mut(layer_idx);
-                        let self_wgts: &[F64x4] = &nn.layer_to_self_parameters(layer_idx);
-                        for source_idx in 0..this_layer_size {
-                            g_self_wgts[source_idx + target_idx * this_layer_size]
-                                .mul_add_scalar(activations[source_idx], deriv);
-                            if let Some(ref mut lld) = prev_step {
-                                let prev_step_this_layer_derivs: &mut [f64] = &mut lld
-                                    .activation_derivs
-                                    [state_offset..state_offset + this_layer_size];
+                        // unsafe for get_unchecked()
+                        unsafe {
+                            for source_idx in 0..prev_layer_size {
+                                g_wgts
+                                    .get_unchecked_mut(source_idx + target_idx * prev_layer_size)
+                                    .mul_add_scalar(
+                                        *prev_activations.get_unchecked(source_idx),
+                                        deriv,
+                                    );
                                 let add_deriv = deriv_input
-                                    * self_wgts[source_idx + target_idx * this_layer_size].v1()
+                                    * wgts
+                                        .get_unchecked(source_idx + target_idx * prev_layer_size)
+                                        .v1()
                                     + deriv_input_gate
-                                        * self_wgts[source_idx + target_idx * this_layer_size].v2()
+                                        * wgts
+                                            .get_unchecked(
+                                                source_idx + target_idx * prev_layer_size,
+                                            )
+                                            .v2()
                                     + deriv_output_gate
-                                        * self_wgts[source_idx + target_idx * this_layer_size].v3()
+                                        * wgts
+                                            .get_unchecked(
+                                                source_idx + target_idx * prev_layer_size,
+                                            )
+                                            .v3()
                                     + deriv_forget_gate
-                                        * self_wgts[source_idx + target_idx * this_layer_size].v4();
-                                prev_step_this_layer_derivs[source_idx] += add_deriv;
-                            };
+                                        * wgts
+                                            .get_unchecked(
+                                                source_idx + target_idx * prev_layer_size,
+                                            )
+                                            .v4();
+                                if let Some(ref mut lld) = lower_layer_derivs {
+                                    *lld.get_unchecked_mut(source_idx) += add_deriv;
+                                }
+                            }
+                            // self connections
+                            let g_self_wgts: &mut [F64x4] =
+                                grad.layer_to_self_parameters_mut(layer_idx);
+                            let self_wgts: &[F64x4] = &nn.layer_to_self_parameters(layer_idx);
+                            for source_idx in 0..this_layer_size {
+                                g_self_wgts
+                                    .get_unchecked_mut(source_idx + target_idx * this_layer_size)
+                                    .mul_add_scalar(*activations.get_unchecked(source_idx), deriv);
+                                if let Some(ref mut lld) = prev_step {
+                                    let prev_step_this_layer_derivs: &mut [f64] = &mut lld
+                                        .activation_derivs
+                                        [state_offset..state_offset + this_layer_size];
+                                    let add_deriv = deriv_input
+                                        * self_wgts
+                                            .get_unchecked(
+                                                source_idx + target_idx * this_layer_size,
+                                            )
+                                            .v1()
+                                        + deriv_input_gate
+                                            * self_wgts
+                                                .get_unchecked(
+                                                    source_idx + target_idx * this_layer_size,
+                                                )
+                                                .v2()
+                                        + deriv_output_gate
+                                            * self_wgts
+                                                .get_unchecked(
+                                                    source_idx + target_idx * this_layer_size,
+                                                )
+                                                .v3()
+                                        + deriv_forget_gate
+                                            * self_wgts
+                                                .get_unchecked(
+                                                    source_idx + target_idx * this_layer_size,
+                                                )
+                                                .v4();
+                                    *prev_step_this_layer_derivs.get_unchecked_mut(source_idx) +=
+                                        add_deriv;
+                                };
+                            }
                         }
                         let g_biases: &mut [F64x4] = &mut grad.layer_bias_parameters_mut(layer_idx);
                         g_biases[target_idx].add(deriv);
@@ -897,32 +936,38 @@ impl LSTMv2State {
             state_offset += this_layer_size;
 
             for target_idx in 0..this_layer_size {
-                // iiof = input, input gate, output gate, forget gate
-                let mut iiof = biases[target_idx];
-                // add activations from previous layer
-                for source_idx in 0..prev_layer_size {
-                    let input: f64 = self.state1[source_idx];
-                    iiof.mul_add_scalar(
-                        input,
-                        to_this_layer_wgts[source_idx + target_idx * nn.layer_sizes[layer_idx - 1]],
-                    );
-                }
-                // add self activations
-                for source_idx in 0..this_layer_size {
-                    let input: f64 = last_activations[source_idx];
-                    iiof.mul_add_scalar(
-                        input,
-                        self_wgts[source_idx + target_idx * this_layer_size],
-                    );
-                }
+                // unsafe for hot loops to use unchecked get
+                let mut iiof = unsafe {
+                    // iiof = input, input gate, output gate, forget gate
+                    let mut iiof = *biases.get_unchecked(target_idx);
+                    // add activations from previous layer
+                    for source_idx in 0..prev_layer_size {
+                        let input: f64 = *self.state1.get_unchecked(source_idx);
+                        iiof.mul_add_scalar(
+                            input,
+                            *to_this_layer_wgts.get_unchecked(
+                                source_idx
+                                    + target_idx * *nn.layer_sizes.get_unchecked(layer_idx - 1),
+                            ),
+                        );
+                    }
+                    // add self activations
+                    for source_idx in 0..this_layer_size {
+                        let input: f64 = *last_activations.get_unchecked(source_idx);
+                        iiof.mul_add_scalar(
+                            input,
+                            *self_wgts.get_unchecked(source_idx + target_idx * this_layer_size),
+                        );
+                    }
+                    iiof
+                };
 
-                let mut iiof_sigmoid = iiof;
-                iiof_sigmoid.fast_sigmoid();
+                iiof.fast_sigmoid();
 
-                let input: f64 = iiof_sigmoid.v1() * 2.0 - 1.0;
-                let input_gate_activation: f64 = iiof_sigmoid.v2();
-                let output_gate_activation: f64 = iiof_sigmoid.v3();
-                let forget_gate_activation: f64 = iiof_sigmoid.v4();
+                let input: f64 = iiof.v1() * 2.0 - 1.0;
+                let input_gate_activation: f64 = iiof.v2();
+                let output_gate_activation: f64 = iiof.v3();
+                let forget_gate_activation: f64 = iiof.v4();
 
                 let new_memory: f64 = input * input_gate_activation
                     + last_memories[target_idx] * forget_gate_activation;
