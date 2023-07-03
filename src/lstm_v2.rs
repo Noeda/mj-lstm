@@ -995,55 +995,6 @@ impl LSTMv2State {
     }
 }
 
-/*
-# Loop over each target node
-for target_idx in range(num_targets):
-
-    # Calculate derivative of the loss with respect to activation output
-    dActivation = this_layer_derivs[target_idx]
-
-    # Calculate derivative of the loss with respect to new_memory, output_gate
-    dNewMemory = dActivation * output_gate * tanh_derivative(new_memory)
-    dOutputGate = dActivation * tanh(new_memory) * sigmoid_derivative(output_gate)
-
-    # Calculate derivative of the loss with respect to input, input_gate, forget_gate, old_memory
-    dInput = dNewMemory * input_gate * tanh_derivative(input)
-    dInputGate = dNewMemory * input * sigmoid_derivative(input_gate)
-    dForgetGate = dNewMemory * old_memory * sigmoid_derivative(forget_gate)
-    dOldMemory = dNewMemory * forget_gate
-
-    # Store the calculated derivatives
-    lower_layer_derivs[target_idx] = [dInput, dInputGate, dForgetGate, dOutputGate, dOldMemory]
-
-# Calculate gradients for weights and biases
-# Assume that 'weights' and 'biases' are the weight and bias matrices of the LSTM
-for source_idx in range(num_sources):
-    for target_idx in range(num_targets):
-        dInput, dInputGate, dForgetGate, dOutputGate, dOldMemory = lower_layer_derivs[target_idx]
-
-        # Update weights
-        weights[source_idx, target_idx] -= learning_rate * (
-            dInput * inputs[source_idx] + dInputGate * inputs[source_idx] +
-            dForgetGate * inputs[source_idx] + dOutputGate * inputs[source_idx]
-        )
-
-        # Update biases
-        biases[source_idx, target_idx] -= learning_rate * (
-            dInput + dInputGate + dForgetGate + dOutputGate
-        )
-
-# Propagate the error back to the previous layer
-# 'previous_layer_derivs' is the derivative array of the previous layer
-for source_idx in range(num_sources):
-    previous_layer_derivs[source_idx] = sum(
-        lower_layer_derivs[target_idx][4] # old_memory derivative
-        for target_idx in range(num_targets)
-    )
-*/
-// Reference from Haskell implementation:
-// LSTM {toWeights = [[IIOF 4.3129904138269567e-4 9.438822133609984e-5 (-1.0074727860672123e-3) (-1.1337895660076867e-4),IIOF 5.852353551880951e-4 1.2807662187728017e-4 (-1.3670531052101724e-3) (-1.5384540091808484e-4),IIOF (-8.889925461809518e-3) (-5.492084930426193e-4) (-6.369696815333524e-3) (-9.88490563859444e-4),IIOF (-1.206285705750359e-2) (-7.452282445787311e-4) (-8.64312558222105e-3) (-1.341295877648506e-3)]], selfWeights = [[IIOF 0.0 0.0 0.0 0.0,IIOF 0.0 0.0 0.0 0.0,IIOF 0.0 0.0 0.0 0.0,IIOF 0.0 0.0 0.0 0.0]], outputWeights = [-7.421095100750434e-2,4.267761035087978e-2,-3.411296110713112e-2,1.9617854808216102e-2], outputBiases = [0.4859447909644566,0.22337694813676723], biases = [[IIOF 1.3868136378864812e-3 3.034991039745976e-4 (-3.2394623346212615e-3) (-3.6456256141726264e-4),IIOF (-2.8584969330577227e-2) (-1.7659437075325383e-3) (-2.048134024222998e-2) (-3.17842625035191e-3)]], initialMemories = [[3.2897519719074916e-3,-4.399103378822884e-2]]}
-// bias [F64x4 { v1: 0.001386820943986509, v2: 0.004313258874282212, v3: -0.0032394623346212606, v4: -0.0009985360041211418 }, F64x4 { v1: 0.001890053248311616, v2: 0.001235205654682536, v3: -0.020481340242229997, v4: 0.001170021156213415 }]
-
 #[cfg(test)]
 mod tests {
     use super::*;
