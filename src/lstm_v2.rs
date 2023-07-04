@@ -135,6 +135,32 @@ impl AdamWConfiguration {
             ..self
         }
     }
+
+    pub fn learning_rate(self, learning_rate: f64) -> Self {
+        Self {
+            learning_rate,
+            ..self
+        }
+    }
+
+    pub fn weight_decay(self, weight_decay: f64) -> Self {
+        Self {
+            weight_decay,
+            ..self
+        }
+    }
+
+    pub fn beta1(self, beta1: f64) -> Self {
+        Self { beta1, ..self }
+    }
+
+    pub fn beta2(self, beta2: f64) -> Self {
+        Self { beta2, ..self }
+    }
+
+    pub fn epsilon(self, epsilon: f64) -> Self {
+        Self { epsilon, ..self }
+    }
 }
 
 impl Default for AdamWConfiguration {
