@@ -670,6 +670,57 @@ impl LSTMv2State {
         *dod = Some(output_gradients.to_vec());
     }
 
+    /// Same as set_output_derivs but for a specific time step.
+    /// Use get_time_step() to get the time step index, in the same place you would normally use
+    /// set_output_derivs. Then you can after the fact set the output derivatives.
+    ///
+    /// This will overwrite derivatives if they've been set before.
+    ///
+    /// Panics if you use step from the future. I.e. the forward propagation for the step is for
+    /// must have happened by the time you call this.
+    pub fn set_output_derivs_for_step(
+        &mut self,
+        nn: &LSTMv2,
+        output_gradients: &[f64],
+        step: usize,
+    ) {
+        assert!(self.backprop_steps.len() > 0);
+        assert_eq!(
+            output_gradients.len(),
+            nn.layer_sizes[nn.layer_sizes.len() - 1]
+        );
+        assert!(step < self.backprop_steps.len());
+        let dod = &mut self.backprop_steps[step].borrow_mut().desired_output_derivs;
+        *dod = Some(output_gradients.to_vec());
+    }
+
+    pub fn get_time_step(&self) -> usize {
+        assert!(self.backprop_steps.len() > 0);
+        self.backprop_steps.len() - 1
+    }
+
+    /// Gets activation values for some layer.
+    ///
+    /// Can be used for analysis of the network.
+    ///
+    /// The first hidden layer is at 1 (to match layer_sizes given in creation of LSTMv2).
+    pub fn layer_activations(&self, layer: usize, nn: &LSTMv2) -> &[f64] {
+        if layer == 0 {
+            panic!("layer_activations: layer 0 is input layer");
+        }
+        let mut state_offset: usize = 0;
+        for layer_idx in 1..nn.layer_sizes.len() - 1 {
+            let this_layer_size: usize = nn.layer_sizes[layer_idx];
+            let last_activations: &[f64] =
+                &self.last_activations[state_offset..state_offset + this_layer_size];
+            if layer_idx == layer {
+                return last_activations;
+            }
+            state_offset += this_layer_size;
+        }
+        panic!("layer_activations: layer {} is out of bounds", layer);
+    }
+
     /// Resets all backpropagation state. If you are re-using the state then you'll want to call
     /// this after you've adjusted the gradients or it'll re-use your old gradients.
     pub fn reset_backpropagation(&mut self) {
