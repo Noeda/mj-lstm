@@ -641,7 +641,24 @@ impl LSTMv2 {
 
 impl LSTMv2State {
     pub fn propagate_v2(&mut self, nn: &LSTMv2, inputs: &[f64], outputs: &mut Vec<f64>) {
-        self.propagate_v2_shadow(nn, inputs, outputs, false);
+        self.propagate_v2_shadow(nn, inputs, outputs, false, None);
+    }
+
+    pub fn propagate_collect_activations_v2(
+        &mut self,
+        nn: &LSTMv2,
+        inputs: &[f64],
+        outputs: &mut Vec<f64>,
+        activations_layer: usize,
+        activations: &mut Vec<f64>,
+    ) {
+        self.propagate_v2_shadow(
+            nn,
+            inputs,
+            outputs,
+            false,
+            Some((activations_layer, activations)),
+        );
     }
 
     pub fn propagate_collect_gradients_v2(
@@ -650,7 +667,7 @@ impl LSTMv2State {
         inputs: &[f64],
         outputs: &mut Vec<f64>,
     ) {
-        self.propagate_v2_shadow(nn, inputs, outputs, true);
+        self.propagate_v2_shadow(nn, inputs, outputs, true, None);
     }
 
     /// Sets derivatives for outputs. Call this after you've called propagate_collect_gradients_v2
@@ -978,9 +995,14 @@ impl LSTMv2State {
         inputs: &[f64],
         outputs: &mut Vec<f64>,
         collect_gradients: bool,
+        mut collect_activations: Option<(usize, &mut Vec<f64>)>,
     ) {
         assert_eq!(inputs.len(), nn.layer_sizes[0]);
         assert_eq!(outputs.len(), nn.layer_sizes[nn.layer_sizes.len() - 1]);
+
+        if let Some(ref mut collect_activations) = collect_activations {
+            collect_activations.1.clear();
+        }
 
         // if given, compute_gradients is a slice to the gradients of the output layer
         // with respect to the output of the network, and a mutable reference to gradients
@@ -1052,6 +1074,12 @@ impl LSTMv2State {
                 let new_activation: f64 = fast_tanh(new_memory) * output_gate_activation;
 
                 self.state2[target_idx] = new_activation;
+                if let Some(ref mut collect_activations) = collect_activations {
+                    if collect_activations.0 == layer_idx {
+                        collect_activations.1.push(new_activation);
+                    }
+                }
+
                 // backpropagation tracking
                 if let Some(ref mut step) = backprop_step {
                     let ga = step.gate_activations[state_offset_start..state_offset_end].as_mut();
