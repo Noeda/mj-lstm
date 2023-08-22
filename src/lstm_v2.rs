@@ -339,7 +339,7 @@ impl LSTMv2 {
         }
         // initialize forget gates to a high value, to encourage long-term dependencies
         for layer_idx in 1..self.layer_sizes.len() - 1 {
-            let mut params = self.layer_bias_parameters_mut(layer_idx);
+            let params = self.layer_bias_parameters_mut(layer_idx);
             for p in params.iter_mut() {
                 let forget_bias = rng.gen_range(4.9, 5.1);
                 let new_p = F64x4::new(p.v1(), p.v2(), p.v3(), forget_bias);
