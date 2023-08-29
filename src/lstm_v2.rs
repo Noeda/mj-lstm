@@ -24,6 +24,7 @@
 // 2023-07-02: First version where gradient calculation does not seem obviously off, verified with
 // Haskell. Not sure everything continues to be good if we try more complicated scenarios.
 
+use crate::adamw::*;
 use crate::rnn::{RNNState, RNN};
 use crate::simd_common::{
     fast_sigmoid, fast_sigmoid_derivative, fast_tanh, fast_tanh_derivative, inv_fast_sigmoid,
@@ -105,68 +106,6 @@ pub struct AdamWState {
     first_moment: Vec<F64x4>,
     second_moment: Vec<F64x4>,
     iteration: i64,
-}
-
-#[derive(Clone, Debug, Copy, PartialEq, PartialOrd)]
-pub struct AdamWConfiguration {
-    beta1: f64,
-    beta2: f64,
-    epsilon: f64,
-    learning_rate: f64,
-    weight_decay: f64,
-    gradient_clip: f64,
-}
-
-impl AdamWConfiguration {
-    pub fn new() -> Self {
-        AdamWConfiguration {
-            beta1: 0.9,
-            beta2: 0.999,
-            epsilon: 1e-8,
-            learning_rate: 0.001,
-            weight_decay: 0.0,
-            gradient_clip: std::f64::INFINITY,
-        }
-    }
-
-    pub fn gradient_clip(self, gradient_clip: f64) -> Self {
-        Self {
-            gradient_clip,
-            ..self
-        }
-    }
-
-    pub fn learning_rate(self, learning_rate: f64) -> Self {
-        Self {
-            learning_rate,
-            ..self
-        }
-    }
-
-    pub fn weight_decay(self, weight_decay: f64) -> Self {
-        Self {
-            weight_decay,
-            ..self
-        }
-    }
-
-    pub fn beta1(self, beta1: f64) -> Self {
-        Self { beta1, ..self }
-    }
-
-    pub fn beta2(self, beta2: f64) -> Self {
-        Self { beta2, ..self }
-    }
-
-    pub fn epsilon(self, epsilon: f64) -> Self {
-        Self { epsilon, ..self }
-    }
-}
-
-impl Default for AdamWConfiguration {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl AdamWState {
@@ -427,6 +366,7 @@ impl LSTMv2 {
             self.parameters[p].sub(adjustment);
             self.parameters[p].sub(decay);
         }
+        adamw.iteration += 1;
     }
 
     /// Sets every parameter in the LSTM to zero.
