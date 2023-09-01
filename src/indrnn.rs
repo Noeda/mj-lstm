@@ -12,7 +12,10 @@
 
 use crate::adamw::AdamWConfiguration;
 use crate::rnn::{RNNState, RNN};
-use crate::simd_common::{fast_sigmoid, fast_sigmoid_derivative, inv_fast_sigmoid};
+use crate::simd_common::{
+    fast_relu, fast_relu_derivative, fast_sigmoid, fast_sigmoid_derivative, fast_silu,
+    fast_silu_derivative, fast_tanh, fast_tanh_derivative,
+};
 use rand::{thread_rng, Rng};
 use rcmaes::Vectorizable;
 use serde::{Deserialize, Serialize};
@@ -48,6 +51,16 @@ pub struct IndRNN {
     out_weights: Vec<f64>,
     out_biases: Vec<f64>,
     layer_sizes: Vec<usize>,
+
+    activation: IndRNNActivation,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd, Copy)]
+pub enum IndRNNActivation {
+    LogisticSigmoid,
+    Tanh,
+    ReLU,
+    SiLU,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
@@ -68,9 +81,11 @@ unsafe impl Sync for IndRNNState {}
 struct BackpropStep {
     inputs: Vec<f64>,
     last_activations: Vec<Vec<f64>>,
+    last_activations_pre_activation: Vec<Vec<f64>>,
     desired_output_derivs: Vec<f64>,
     output_prev_activations: Vec<f64>,
     last_outputs: Vec<f64>,
+    last_outputs_pre_activation: Vec<f64>,
     activation_derivs: Vec<Vec<f64>>,
 }
 
@@ -84,8 +99,10 @@ impl BackpropStep {
         Self {
             inputs: vec![],
             last_activations: vec![],
+            last_activations_pre_activation: vec![],
             desired_output_derivs: vec![],
             last_outputs: vec![],
+            last_outputs_pre_activation: vec![],
             output_prev_activations: vec![],
             activation_derivs,
         }
@@ -93,7 +110,7 @@ impl BackpropStep {
 }
 
 impl Vectorizable for IndRNN {
-    type Context = Vec<usize>; // layer_sizes
+    type Context = (Vec<usize>, IndRNNActivation); // layer_sizes
 
     fn to_vec(&self) -> (Vec<f64>, Self::Context) {
         let mut result: Vec<f64> = Vec::new();
@@ -112,11 +129,11 @@ impl Vectorizable for IndRNN {
         for ob in self.out_biases.iter() {
             result.push(*ob);
         }
-        (result, self.layer_sizes.clone())
+        (result, (self.layer_sizes.clone(), self.activation))
     }
 
     fn from_vec(vec: &[f64], ctx: &Self::Context) -> Self {
-        let mut rnn = IndRNN::new(ctx);
+        let mut rnn = IndRNN::new(&ctx.0);
         let mut vec = vec;
         for w in rnn.weights.iter_mut() {
             let (wvec, rest) = vec.split_at(w.len());
@@ -137,6 +154,7 @@ impl Vectorizable for IndRNN {
         rnn.out_weights.copy_from_slice(out_weights);
         let (out_biases, _) = rest.split_at(rnn.out_biases.len());
         rnn.out_biases.copy_from_slice(out_biases);
+        rnn.activation = ctx.1;
         rnn
     }
 }
@@ -174,11 +192,28 @@ impl IndRNN {
             out_weights,
             out_biases,
             layer_sizes: layer_sizes.to_vec(),
+            activation: IndRNNActivation::LogisticSigmoid,
         }
+    }
+
+    pub fn set_activation_function(&mut self, activation: IndRNNActivation) {
+        self.activation = activation;
+    }
+
+    pub fn activation_function(&self) -> IndRNNActivation {
+        self.activation
     }
 
     pub fn adamw(&self, config: AdamWConfiguration) -> AdamWState {
         AdamWState::new(config, self)
+    }
+
+    pub fn clip_weights(&mut self) {
+        for u_layer in self.u_layers.iter_mut() {
+            for u in u_layer.iter_mut() {
+                *u = u.max(-1.0).min(1.0);
+            }
+        }
     }
 
     /// Updates gradient based on AdamW optimizer.
@@ -257,6 +292,7 @@ impl IndRNN {
 
         *self = Self::from_vec(&vec, &ctx);
         adamw.iteration += 1;
+        self.clip_weights();
     }
 
     pub fn num_inputs(&self) -> usize {
@@ -274,24 +310,29 @@ impl IndRNN {
     pub fn randomize(&mut self) {
         for w in self.weights.iter_mut() {
             for wval in w.iter_mut() {
-                *wval = thread_rng().gen_range(-1.0, 1.0);
+                *wval = thread_rng().gen_range(-0.00001, 0.00001);
             }
         }
-        for u in self.u_layers.iter_mut() {
+        let num_ulayers = self.u_layers.len();
+        for (idx, u) in self.u_layers.iter_mut().enumerate() {
             for uval in u.iter_mut() {
-                *uval = thread_rng().gen_range(-1.0, 1.0);
+                if idx < num_ulayers - 1 {
+                    *uval = thread_rng().gen_range(0.0, 1.0);
+                } else {
+                    *uval = thread_rng().gen_range(0.99, 1.01);
+                }
             }
         }
         for b in self.biases.iter_mut() {
             for bval in b.iter_mut() {
-                *bval = thread_rng().gen_range(-1.0, 1.0);
+                *bval = thread_rng().gen_range(-0.00001, 0.00001);
             }
         }
         for o in self.out_weights.iter_mut() {
-            *o = thread_rng().gen_range(-1.0, 1.0);
+            *o = thread_rng().gen_range(-0.00001, 0.00001);
         }
         for ob in self.out_biases.iter_mut() {
-            *ob = thread_rng().gen_range(-1.0, 1.0);
+            *ob = thread_rng().gen_range(-0.00001, 0.00001);
         }
     }
 
@@ -418,8 +459,20 @@ impl IndRNNState {
 
             let prev_layer_len = nn.layer_sizes[nn.layer_sizes.len() - 2];
             for target_idx in 0..output_len {
-                let output_deriv =
-                    fast_sigmoid_derivative(inv_fast_sigmoid(step.last_outputs[target_idx]));
+                let output_deriv = match nn.activation {
+                    IndRNNActivation::LogisticSigmoid => {
+                        fast_sigmoid_derivative(step.last_outputs_pre_activation[target_idx])
+                    }
+                    IndRNNActivation::Tanh => {
+                        fast_tanh_derivative(step.last_outputs_pre_activation[target_idx])
+                    }
+                    IndRNNActivation::ReLU => {
+                        fast_relu_derivative(step.last_outputs_pre_activation[target_idx])
+                    }
+                    IndRNNActivation::SiLU => {
+                        fast_silu_derivative(step.last_outputs_pre_activation[target_idx])
+                    }
+                };
                 let output_deriv2 = output_deriv * ograds[target_idx];
                 grad.out_biases[target_idx] += output_deriv2;
                 self.state2.push(output_deriv2);
@@ -462,9 +515,20 @@ impl IndRNNState {
                 for target_idx in 0..this_layer_size {
                     let tld = step.activation_derivs[layer_idx - 1][target_idx];
 
-                    let d_act = fast_sigmoid_derivative(inv_fast_sigmoid(
-                        step.last_activations[layer_idx - 1][target_idx],
-                    ));
+                    let d_act = match nn.activation {
+                        IndRNNActivation::LogisticSigmoid => fast_sigmoid_derivative(
+                            step.last_activations_pre_activation[layer_idx - 1][target_idx],
+                        ),
+                        IndRNNActivation::Tanh => fast_tanh_derivative(
+                            step.last_activations_pre_activation[layer_idx - 1][target_idx],
+                        ),
+                        IndRNNActivation::ReLU => fast_relu_derivative(
+                            step.last_activations_pre_activation[layer_idx - 1][target_idx],
+                        ),
+                        IndRNNActivation::SiLU => fast_silu_derivative(
+                            step.last_activations_pre_activation[layer_idx - 1][target_idx],
+                        ),
+                    };
 
                     let prev_act: f64 = if let Some(ref mut prev_step) = prev_step {
                         prev_step.last_activations[layer_idx - 1][target_idx]
@@ -473,7 +537,6 @@ impl IndRNNState {
                     };
 
                     grad.biases[layer_idx - 1][target_idx] += tld * d_act;
-                    // unknown if correct:
                     grad.u_layers[layer_idx - 1][target_idx] += tld * d_act * prev_act;
 
                     if let Some(ref mut prev_step) = prev_step {
@@ -530,7 +593,10 @@ impl IndRNNState {
             let weights = &rnn.weights[layer_idx];
             let u_layer = &rnn.u_layers[layer_idx];
             let last_activations: &[f64] = &self.activations[layer_idx];
-
+            let mut last_activations_pre_activation: Vec<f64> = vec![];
+            if let Some(ref mut _step) = backprop_step {
+                last_activations_pre_activation.reserve(tgt_layer_sz);
+            }
             self.state2.truncate(0);
             for target_idx in 0..tgt_layer_sz {
                 let mut activation: f64 = biases[target_idx];
@@ -541,18 +607,31 @@ impl IndRNNState {
                         weights[source_idx + target_idx * src_layer_sz] * self.state1[source_idx];
                 }
                 activation += u_layer[target_idx] * last_activations[target_idx];
-                activation = fast_sigmoid(activation);
+                if let Some(ref mut _step) = backprop_step {
+                    last_activations_pre_activation.push(activation);
+                }
+                activation = match rnn.activation {
+                    IndRNNActivation::LogisticSigmoid => fast_sigmoid(activation),
+                    IndRNNActivation::Tanh => fast_tanh(activation),
+                    IndRNNActivation::ReLU => fast_relu(activation),
+                    IndRNNActivation::SiLU => fast_silu(activation),
+                };
                 self.state2.push(activation);
             }
             self.activations[layer_idx].truncate(0);
             self.activations[layer_idx].extend_from_slice(&self.state2);
             if let Some(ref mut step) = backprop_step {
                 step.last_activations.push(self.state2.clone());
+                step.last_activations_pre_activation
+                    .push(last_activations_pre_activation);
             }
             std::mem::swap(&mut self.state1, &mut self.state2);
         }
 
         // output linear layer
+        if let Some(ref mut step) = backprop_step {
+            step.last_outputs_pre_activation.truncate(0);
+        }
         let outputs_len = outputs.len();
         for target_idx in 0..outputs_len {
             let mut activation: f64 = rnn.out_biases[target_idx];
@@ -561,7 +640,15 @@ impl IndRNNState {
                 activation +=
                     rnn.out_weights[source_idx + target_idx * ninputs] * self.state1[source_idx];
             }
-            outputs[target_idx] = fast_sigmoid(activation);
+            if let Some(ref mut step) = backprop_step {
+                step.last_outputs_pre_activation.push(activation);
+            }
+            outputs[target_idx] = match rnn.activation {
+                IndRNNActivation::LogisticSigmoid => fast_sigmoid(activation),
+                IndRNNActivation::Tanh => fast_tanh(activation),
+                IndRNNActivation::ReLU => fast_relu(activation),
+                IndRNNActivation::SiLU => fast_silu(activation),
+            };
         }
         if let Some(ref mut step) = backprop_step {
             step.output_prev_activations.extend_from_slice(&self.state1);

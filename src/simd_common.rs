@@ -94,8 +94,46 @@ pub fn inv_fast_sigmoid(y: f64) -> f64 {
 }
 
 #[inline]
+pub fn fast_relu(x: f64) -> f64 {
+    if x > 0.0 {
+        x
+    } else {
+        0.0
+    }
+}
+
+#[inline]
+pub fn inv_fast_relu(x: f64) -> f64 {
+    if x > 0.0 {
+        x
+    } else {
+        0.0
+    }
+}
+
+#[inline]
+pub fn fast_relu_derivative(x: f64) -> f64 {
+    if x > 0.0 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+#[inline]
 pub fn inv_fast_tanh(y: f64) -> f64 {
     inv_fast_sigmoid((y + 1.0) / 2.0)
+}
+
+#[inline]
+pub fn fast_silu(x: f64) -> f64 {
+    x * fast_sigmoid(x)
+}
+
+#[inline]
+pub fn fast_silu_derivative(x: f64) -> f64 {
+    let s = fast_sigmoid(x);
+    s + x * s * (1.0 - s)
 }
 
 #[inline]
