@@ -261,6 +261,12 @@ impl IndRNN {
         grad: &Self,
         adamw: &mut AdamWState,
     ) {
+        // lazy way to preserve u layer weights if they are frozen.
+        let u_layer_tmp = if self.freeze_u_layers {
+            self.u_layers.clone()
+        } else {
+            Vec::new()
+        };
         let (mut vec, ctx) = self.to_vec();
         let (gvec, _gctx) = grad.to_vec();
         let nparameters = vec.len();
@@ -332,6 +338,9 @@ impl IndRNN {
         *self = Self::from_vec(&vec, &ctx);
         adamw.iteration += 1;
         self.clip_weights();
+        if self.freeze_u_layers {
+            self.u_layers = u_layer_tmp;
+        }
     }
 
     pub fn num_inputs(&self) -> usize {
