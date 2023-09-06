@@ -593,6 +593,23 @@ impl LSTMv2State {
         self.propagate_v2_shadow(nn, inputs, outputs, false, None);
     }
 
+    pub fn propagate_collect_activations_and_gradients_v2(
+        &mut self,
+        nn: &LSTMv2,
+        inputs: &[f64],
+        outputs: &mut Vec<f64>,
+        activations_layer: usize,
+        activations: &mut Vec<f64>,
+    ) {
+        self.propagate_v2_shadow(
+            nn,
+            inputs,
+            outputs,
+            true,
+            Some((activations_layer, activations)),
+        );
+    }
+
     pub fn propagate_collect_activations_v2(
         &mut self,
         nn: &LSTMv2,
