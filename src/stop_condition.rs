@@ -149,7 +149,7 @@ mod tests {
         let mut rng = thread_rng();
         let mut points = vec![];
         for x in 0..4000 {
-            points.push(rng.gen_range(0.0, 4.0) + (x as f64) * 0.01);
+            points.push(rng.random_range(0.0..4.0) + (x as f64) * 0.01);
         }
         let result = series_is_trending_down(&points);
         assert!(result < 0.00001);
@@ -161,7 +161,7 @@ mod tests {
         let mut rng = thread_rng();
         let mut points = vec![];
         for x in 0..4000 {
-            points.push(rng.gen_range(0.0, 4.0) + (x as f64) * -0.01);
+            points.push(rng.random_range(0.0..4.0) + (x as f64) * -0.01);
         }
         let result = series_is_trending_down(&points);
         assert!(result > 0.99999);
@@ -173,7 +173,7 @@ mod tests {
         let mut rng = thread_rng();
         let mut points = vec![];
         for x in 0..4000 {
-            points.push(rng.gen_range(0.0, 4.0));
+            points.push(rng.random_range(0.0..4.0));
         }
         let result = series_is_trending_down(&points);
         assert!(result > 0.1);
@@ -185,7 +185,7 @@ mod tests {
         let mut rng = thread_rng();
         let mut points = vec![];
         for x in 0..4000 {
-            points.push(rng.gen_range(0.0, 4.0));
+            points.push(rng.random_range(0.0..4.0));
         }
         let result = series_is_trending_down(&points);
         let result2 = series_is_trending_down_log(&points).exp();
@@ -197,7 +197,7 @@ mod tests {
         let mut rng = thread_rng();
         let mut points = vec![];
         for x in 0..4000 {
-            points.push(rng.gen_range(0.0, 4.0) + (x as f64 * 0.1));
+            points.push(rng.random_range(0.0..4.0) + (x as f64 * 0.1));
         }
         let result2 = series_is_trending_down_log(&points);
         assert!(result2 < -10000.0);

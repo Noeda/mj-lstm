@@ -397,7 +397,8 @@ dependencies = [
  "num",
  "num_cpus",
  "quickcheck",
- "rand 0.7.3",
+ "rand 0.9.0",
+ "rand_distr 0.5.1",
  "rayon",
  "rcmaes",
  "rug",
@@ -846,7 +847,7 @@ dependencies = [
 [[package]]
 name = "rcmaes"
 version = "0.1.0"
-source = "git+https://github.com/Noeda/rcmaes?rev=b1593514cc39641dd6ba53dc8604006fbf595506#b1593514cc39641dd6ba53dc8604006fbf595506"
+source = "git+https://github.com/Noeda/rcmaes?rev=c232b57d6794beca62cf54a7ad0cc76350b80345#c232b57d6794beca62cf54a7ad0cc76350b80345"
 dependencies = [
  "cc",
  "libc",

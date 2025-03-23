@@ -7,7 +7,7 @@ use mj_autograd::*;
 /// This is a MxN LSTM-node network.
 ///
 /// It uses forget gates but does not have peepholes.
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use rcmaes::Vectorizable;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -523,7 +523,7 @@ pub struct LSTMStateBase<T, Unpack> {
 pub(crate) fn make_random_vec<T: FromF64>(len: usize) -> Vec<T> {
     let mut v = Vec::with_capacity(len);
     for _ in 0..len {
-        v.push(T::from_f64(thread_rng().gen_range(-0.001, 0.001)));
+        v.push(T::from_f64(rng().random_range(-0.001..0.001)));
     }
     v
 }
@@ -532,9 +532,9 @@ fn make_random_vec4_pack_them_forgets_1<Unpack: Unpackable>(len: usize) -> Vec<U
     let mut v = Vec::with_capacity(len);
     for i in 0..len {
         if i % 4 == 3 {
-            v.push(thread_rng().gen_range(-2.0, 2.0));
+            v.push(rng().random_range(-2.0..2.0));
         } else {
-            v.push(thread_rng().gen_range(-0.001, 0.001));
+            v.push(rng().random_range(-0.001..0.001));
         }
     }
     Unpack::from_f64_vec(&v)
@@ -543,7 +543,7 @@ fn make_random_vec4_pack_them_forgets_1<Unpack: Unpackable>(len: usize) -> Vec<U
 fn make_random_vec4_pack_them<Unpack: Unpackable>(len: usize) -> Vec<Unpack> {
     let mut v = Vec::with_capacity(len);
     for _ in 0..len {
-        v.push(thread_rng().gen_range(-0.001, 0.001));
+        v.push(rng().random_range(-0.001..0.001));
     }
     Unpack::from_f64_vec(&v)
 }
@@ -613,7 +613,7 @@ impl<T: 'static + Clone + FromF64, Unpack: Unpackable + AllocateWeights>
         widest_layer_size = std::cmp::max(widest_layer_size, layer_sizes[layer_sizes.len() - 2]);
 
         for _ in 0..layer_sizes[layer_sizes.len() - 1] * layer_sizes[layer_sizes.len() - 2] {
-            output_layer_weights.push(T::from_f64(thread_rng().gen_range(-1.0, 1.0)));
+            output_layer_weights.push(T::from_f64(rng().random_range(-1.0..1.0)));
         }
 
         let mut memories = Vec::with_capacity(layer_sizes.len() - 2);
@@ -622,7 +622,7 @@ impl<T: 'static + Clone + FromF64, Unpack: Unpackable + AllocateWeights>
         let mut output_layer_biases: Vec<T> =
             Vec::with_capacity(layer_sizes[layer_sizes.len() - 1]);
         for _ in 0..layer_sizes[layer_sizes.len() - 1] {
-            output_layer_biases.push(T::from_f64(thread_rng().gen_range(-1.0, 1.0)));
+            output_layer_biases.push(T::from_f64(rng().random_range(-1.0..1.0)));
         }
 
         let mut last_state_weights = Vec::with_capacity(layer_sizes.len() - 2);

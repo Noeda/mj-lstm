@@ -16,7 +16,7 @@ use crate::simd_common::{
     fast_relu, fast_relu_derivative, fast_sigmoid, fast_sigmoid_derivative, fast_silu,
     fast_silu_derivative, fast_tanh, fast_tanh_derivative,
 };
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use rcmaes::Vectorizable;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -358,27 +358,27 @@ impl IndRNN {
     pub fn randomize(&mut self) {
         for w in self.weights.iter_mut() {
             for wval in w.iter_mut() {
-                *wval = thread_rng().gen_range(-0.1, 0.1);
+                *wval = rng().random_range(-0.1..0.1);
             }
         }
         let num_ulayers = self.u_layers.len();
         for (idx, u) in self.u_layers.iter_mut().enumerate() {
             for uval in u.iter_mut() {
                 if idx < num_ulayers - 1 {
-                    *uval = thread_rng().gen_range(0.0, 1.0);
+                    *uval = rng().random_range(0.0..1.0);
                 }
             }
         }
         for b in self.biases.iter_mut() {
             for bval in b.iter_mut() {
-                *bval = thread_rng().gen_range(-0.1, 0.1);
+                *bval = rng().random_range(-0.1..0.1);
             }
         }
         for o in self.out_weights.iter_mut() {
-            *o = thread_rng().gen_range(-0.1, 0.1);
+            *o = rng().random_range(-0.1..0.1);
         }
         for ob in self.out_biases.iter_mut() {
-            *ob = thread_rng().gen_range(-0.1, 0.1);
+            *ob = rng().random_range(-0.1..0.1);
         }
     }
 

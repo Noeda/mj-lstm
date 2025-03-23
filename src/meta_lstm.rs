@@ -13,7 +13,7 @@
  */
 
 use crate::simd_common::sigmoid;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use rcmaes::Vectorizable;
 
 // feed forward network using meta neural networks
@@ -81,17 +81,17 @@ impl Vectorizable for MetaNN {
 }
 
 fn randomize_vec(vec: &mut [f64]) {
-    let mut rng = thread_rng();
+    let mut rng = rng();
     for v in vec.iter_mut() {
-        *v = rng.gen_range(-0.01, 0.01);
+        *v = rng.random_range(-0.01..0.01);
     }
 }
 
 fn randomize_vec2d(vec: &mut Vec2D<f64>) {
-    let mut rng = thread_rng();
+    let mut rng = rng();
     for col in 0..vec.cols() {
         for row in 0..vec.rows() {
-            vec.set(row, col, rng.gen_range(-0.01, 0.01));
+            vec.set(row, col, rng.random_range(-0.01..0.01));
         }
     }
 }

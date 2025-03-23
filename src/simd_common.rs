@@ -207,7 +207,7 @@ mod tests {
     fn tanh_and_inv_tanh() {
         let mut rng = thread_rng();
         for _ in 0..1000 {
-            let x = rng.gen_range(-10.0, 10.0);
+            let x = rng.gen_range(-10.0..10.0);
             let y = tanh(x);
             let x2 = inv_tanh(y);
             assert!((x - x2).abs() < 1e-6);

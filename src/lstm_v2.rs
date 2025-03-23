@@ -30,7 +30,8 @@ use crate::simd_common::{
     fast_sigmoid, fast_sigmoid_derivative, fast_tanh, fast_tanh_derivative, inv_fast_sigmoid,
     inv_fast_tanh, F64x4,
 };
-use rand::{thread_rng, Rng};
+use rand::{rng, rngs::ThreadRng, Rng};
+use rand_distr::{Distribution, Normal};
 use rcmaes::Vectorizable;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -230,6 +231,71 @@ fn count_parameters(layer_sizes: &[usize], start_idx: usize, end_idx: usize) -> 
     num_parameters
 }
 
+// Initialization types for LSTMv2. Use with randomize_v2()
+//
+// 2025-03-22 - Mikko:
+//
+// This is a very rough estimate but in a rough toy LSTM task I was doing while testing these that
+// required reading a noisy input, this was how these various schemes performed in training set
+// (from best to worst), when using gradient descent (task was trained 100 times):
+//
+// 1. UniformNeg11   23.34638388956221
+// 2. Zeros          21.80343851065493
+// 3. Ones           19.459929001078013
+// 4. Uniform01      15.892091989653766
+// 5. UniformXavier  15.168558855196196
+// 6. NormalXavier   14.59280266595369
+// 7. NegativeOnes   11.660540815725053
+// 8. MJLSTMv1       9.347469568823815 (this is the implementation before introducing more variety to randomizing
+//                    weights... ouch if this has been the worst weight initalization this entire
+//                    time)
+//
+// I don't know if the results generalize beyond my toy task or if e.g. evolutionary algorithms
+// (sometimes used with LSTM) would get a different ranking. Xavier afaik was designed with regular
+// feed forward networks in mind to keep variance of input and output the same, and maybe that
+// isn't as beneficial/works as well for LSTM.
+//
+// The plain "Uniform -1 to 1" (UniformNeg11) had quite a margin too at the top. The
+// zeros/ones/negative ones have a slight perturbance in them or gradient descent breaks. I wonder
+// if having small gradients due to the small differences at the beginning of the training was
+// really the driving force for good rank for zeros or ones.
+//
+// I started myself using UniformNeg11 but I have in my back of the mind to some day test much
+// more thoroughly and scientifically this, and to sometimes test if in some task the others do
+// better (e.g. xavier ones).
+#[derive(Clone, Debug, Copy, Eq, Ord, PartialEq, PartialOrd)]
+pub enum InitializationType {
+    Zeros,        // all parameters become zero (with tiny perturbance)
+    Ones,         // all parameters become one (with tiny perturbance)
+    NegativeOnes, // all parameters become negative one (with tiny perturbance)
+    Uniform01,    // all parameters are uniformly distributed in [0, 1)
+    UniformNeg11, // all parameters are uniformly distributed in [-1, 1)
+    MJLSTMv1,     // What LSTMv2::randomize() does
+    // UniformXavier initialization
+    // gain=1, a = gain*sqrt(6/(fan_in+fan_out))
+    // Uniformly distributed in [a, -a]
+    UniformXavier,
+    // NormalXavier initialization
+    // gain=1, a = gain*sqrt(2/(fan_in+fan_out))
+    // Normally distributed with mean=0 and stdev=a
+    NormalXavier,
+}
+
+impl InitializationType {
+    pub fn all_initialization_types() -> Vec<Self> {
+        vec![
+            Self::Zeros,
+            Self::Ones,
+            Self::NegativeOnes,
+            Self::Uniform01,
+            Self::UniformNeg11,
+            Self::MJLSTMv1,
+            Self::UniformXavier,
+            Self::NormalXavier,
+        ]
+    }
+}
+
 impl LSTMv2 {
     /// Creates a new LSTMv2 with the given layer sizes.
     ///
@@ -267,22 +333,165 @@ impl LSTMv2 {
     }
 
     pub fn randomize(&mut self) {
-        let mut rng = thread_rng();
+        // Randomizes weights in the LSTM encouraging learning long-term dependencies.
+        // The scheme was never really tested much, so randomize_v2 has been introduced that had
+        // more principled approach to initialization.
+        let mut rng = rng();
         for p in &mut self.parameters {
             *p = F64x4::new(
-                rng.gen_range(-0.1, 0.1),
-                rng.gen_range(-0.1, 0.1),
-                rng.gen_range(-0.1, 0.1),
-                rng.gen_range(-0.1, 0.1),
+                rng.random_range(-0.1..0.1),
+                rng.random_range(-0.1..0.1),
+                rng.random_range(-0.1..0.1),
+                rng.random_range(-0.1..0.1),
             );
         }
         // initialize forget gates to a high value, to encourage long-term dependencies
         for layer_idx in 1..self.layer_sizes.len() - 1 {
             let params = self.layer_bias_parameters_mut(layer_idx);
             for p in params.iter_mut() {
-                let forget_bias = rng.gen_range(4.9, 5.1);
+                let forget_bias = rng.random_range(4.9..5.1);
                 let new_p = F64x4::new(p.v1(), p.v2(), p.v3(), forget_bias);
                 *p = new_p;
+            }
+        }
+    }
+
+    pub fn randomize_v2(&mut self, initialization_type: InitializationType) {
+        // Randomizes weights in the LSTM encouraging learning long-term dependencies.
+
+        let mut rng = rng();
+
+        fn uniform_xavier(rng: &mut ThreadRng, fan_in: usize, fan_out: usize) -> f64 {
+            let fan_in: f64 = fan_in as f64;
+            let fan_out: f64 = fan_out as f64;
+            const GAIN: f64 = 1.0;
+            let a = GAIN * (6.0 / (fan_in + fan_out)).sqrt();
+
+            rng.random_range(-a..a)
+        }
+
+        fn normal_xavier(rng: &mut ThreadRng, fan_in: usize, fan_out: usize) -> f64 {
+            let fan_in: f64 = fan_in as f64;
+            let fan_out: f64 = fan_out as f64;
+            const GAIN: f64 = 1.0;
+            let a = GAIN * (2.0 / (fan_in + fan_out)).sqrt();
+
+            let normal = Normal::new(0.0, a).unwrap();
+            normal.sample(rng)
+        }
+
+        fn do_xavier_init<F: Fn(&mut ThreadRng, usize, usize) -> f64>(
+            this: &mut LSTMv2,
+            rng: &mut ThreadRng,
+            randomize: F,
+        ) {
+            for layer in 1..this.layer_sizes.len() - 1 {
+                let fan_in: usize = this.layer_sizes[layer - 1];
+                let fan_out: usize = this.layer_sizes[layer];
+                let ll = this.layer_to_layer_parameters_mut(layer);
+
+                for p in ll.iter_mut() {
+                    *p = F64x4::new(
+                        randomize(rng, fan_in, fan_out),
+                        randomize(rng, fan_in, fan_out),
+                        randomize(rng, fan_in, fan_out),
+                        randomize(rng, fan_in, fan_out),
+                    );
+                }
+
+                let fan_in_and_out = this.layer_sizes[layer];
+                let ll = this.layer_to_self_parameters_mut(layer);
+                for p in ll.iter_mut() {
+                    *p = F64x4::new(
+                        randomize(rng, fan_in_and_out, fan_in_and_out),
+                        randomize(rng, fan_in_and_out, fan_in_and_out),
+                        randomize(rng, fan_in_and_out, fan_in_and_out),
+                        randomize(rng, fan_in_and_out, fan_in_and_out),
+                    );
+                }
+
+                let ll = this.layer_bias_parameters_mut(layer);
+                for p in ll.iter_mut() {
+                    // Simply initialize to one.
+                    // I could not find literature that gives actionable advice if Xavier
+                    // should have some particular bias.
+                    // LSTM it's common to use 1.0, but 0.0 is also common (based on cursory
+                    // research)
+                    *p = F64x4::new(1.0, 1.0, 1.0, 1.0);
+                }
+            }
+
+            let ll = this.layer_to_output_parameters_mut();
+            let fan_in = this.layer_sizes[this.layer_sizes.len() - 2];
+            let num_outputs = this.layer_sizes[this.layer_sizes.len() - 1];
+
+            for p in ll.iter_mut() {
+                *p = randomize(rng, fan_in, num_outputs);
+            }
+
+            let ll = this.output_biases_parameters_mut();
+            for p in ll.iter_mut() {
+                *p = 1.0;
+            }
+        }
+
+        match initialization_type {
+            InitializationType::MJLSTMv1 => self.randomize(),
+            InitializationType::Zeros => {
+                for p in &mut self.parameters {
+                    *p = F64x4::new(
+                        0.0 + rng.random_range(-0.001..0.001),
+                        0.0 + rng.random_range(-0.001..0.001),
+                        0.0 + rng.random_range(-0.001..0.001),
+                        0.0 + rng.random_range(-0.001..0.001),
+                    );
+                }
+            }
+            InitializationType::Ones => {
+                for p in &mut self.parameters {
+                    *p = F64x4::new(
+                        1.0 + rng.random_range(-0.001..0.001),
+                        1.0 + rng.random_range(-0.001..0.001),
+                        1.0 + rng.random_range(-0.001..0.001),
+                        1.0 + rng.random_range(-0.001..0.001),
+                    );
+                }
+            }
+            InitializationType::NegativeOnes => {
+                for p in &mut self.parameters {
+                    *p = F64x4::new(
+                        -1.0 + rng.random_range(-0.001..0.001),
+                        -1.0 + rng.random_range(-0.001..0.001),
+                        -1.0 + rng.random_range(-0.001..0.001),
+                        -1.0 + rng.random_range(-0.001..0.001),
+                    );
+                }
+            }
+            InitializationType::Uniform01 => {
+                for p in &mut self.parameters {
+                    *p = F64x4::new(
+                        rng.random::<f64>(),
+                        rng.random::<f64>(),
+                        rng.random::<f64>(),
+                        rng.random::<f64>(),
+                    );
+                }
+            }
+            InitializationType::UniformNeg11 => {
+                for p in &mut self.parameters {
+                    *p = F64x4::new(
+                        rng.random::<f64>() * 2.0 - 1.0,
+                        rng.random::<f64>() * 2.0 - 1.0,
+                        rng.random::<f64>() * 2.0 - 1.0,
+                        rng.random::<f64>() * 2.0 - 1.0,
+                    );
+                }
+            }
+            InitializationType::UniformXavier => {
+                do_xavier_init(self, &mut rng, uniform_xavier);
+            }
+            InitializationType::NormalXavier => {
+                do_xavier_init(self, &mut rng, normal_xavier);
             }
         }
     }
@@ -1109,7 +1318,7 @@ impl LSTMv2State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::{thread_rng, Rng};
+    use rand::{rng, Rng};
 
     #[test]
     pub fn instantiation_succeeds() {
@@ -1198,18 +1407,31 @@ mod tests {
     #[test]
     fn to_vec_and_from_vec_are_id() {
         let mut nn: LSTMv2 = LSTMv2::new(&[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]);
-        let mut rng = thread_rng();
+        let mut rng = rng();
         for p4 in nn.parameters.iter_mut() {
             *p4 = F64x4::new(
-                rng.gen_range(0.0, 1.0),
-                rng.gen_range(0.0, 1.0),
-                rng.gen_range(0.0, 1.0),
-                rng.gen_range(0.0, 1.0),
+                rng.random_range(0.0..1.0),
+                rng.random_range(0.0..1.0),
+                rng.random_range(0.0..1.0),
+                rng.random_range(0.0..1.0),
             );
         }
         let (vec, ctx) = nn.to_vec();
         let nn2 = LSTMv2::from_vec(&vec, &ctx);
         assert_eq!(nn, nn2);
+    }
+
+    #[test]
+    fn randomize_v2_tests() {
+        let mut nn = LSTMv2::new(&[5, 32, 1]);
+        nn.randomize_v2(InitializationType::UniformXavier);
+        nn.randomize_v2(InitializationType::NormalXavier);
+        nn.randomize_v2(InitializationType::UniformNeg11);
+        nn.randomize_v2(InitializationType::Uniform01);
+        nn.randomize_v2(InitializationType::MJLSTMv1);
+        nn.randomize_v2(InitializationType::NegativeOnes);
+        nn.randomize_v2(InitializationType::Ones);
+        nn.randomize_v2(InitializationType::Zeros);
     }
 
     /*
@@ -1229,13 +1451,13 @@ mod tests {
         nn = LSTMv2::from_vec(&vec_src, &ctx);
 
         /*
-        let mut rng = thread_rng();
+        let mut rng = rng();
         for p4 in nn.parameters.iter_mut() {
             *p4 = F64x4::new(
-                rng.gen_range(-1.0, 1.0),
-                rng.gen_range(-1.0, 1.0),
-                rng.gen_range(-1.0, 1.0),
-                rng.gen_range(-1.0, 1.0),
+                rng.random_range(-1.0, 1.0),
+                rng.random_range(-1.0, 1.0),
+                rng.random_range(-1.0, 1.0),
+                rng.random_range(-1.0, 1.0),
             );
         }
         let (vec, _ctx) = nn.to_vec();
